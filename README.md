@@ -72,7 +72,7 @@ Contributions are welcome! Follow these steps:
 5. Open a pull request.
 
 ## License
-This project is licensed under the MIT License. See `LICENSE` for details.
+This project is licensed under the MIT License.
 
 
 
