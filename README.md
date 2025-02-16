@@ -1,28 +1,94 @@
-# House Planner Tool
+# HousePlanner
 
 ## Overview
-The **House Planner Tool** is an interactive web application that helps users visualize various amenities near a given address. It utilizes OpenStreetMap (OSM) to display locations of essential services such as EV chargers, hospitals, schools, restaurants, and supermarkets. The tool also calculates and displays the walking distance to these amenities, providing valuable insights for decision-making when choosing a home.
+**HousePlanner** is a sophisticated web application designed to help users explore and evaluate locations by visualizing nearby amenities. Whether you're house hunting, researching neighborhoods, or planning a move, this tool provides detailed insights about essential services and their accessibility from any chosen location worldwide.
 
-## Features
-- **Address Input**: Users can enter an address to locate it on the map.
-- **Amenities Visualization**: Displays nearby EV chargers, hospitals, schools, restaurants, and supermarkets.
-- **Route Highlighting**: Shows walking paths from the given address to selected amenities.
-- **Distance Calculation**: Computes and displays the walking distance to each selected amenity.
-- **Interactive Map**: Uses OpenStreetMap for a user-friendly visualization.
+## Key Features
 
-## Technologies Used
-- **Frontend**: React.js with Leaflet.js for map rendering.
-- **Backend**: Node.js with Express.js (if applicable).
-- **Mapping Data**: OpenStreetMap (OSM) and Overpass API for retrieving nearby amenities.
-- **Geolocation Services**: Nominatim API for address geocoding.
+### Location Selection
+- **Current Location Detection**: Automatically detects and uses your current location
+- **Address Search**: Search for any address or location worldwide
+- **Interactive Map Selection**: Click anywhere on the map to analyze that location
+- **Global Coverage**: Works in any location worldwide with OpenStreetMap coverage
 
-## Installation
+### Amenity Discovery
+- **Multiple Amenity Types**:
+  - 🏥 Hospitals
+  - 🏫 Schools
+  - 🍽️ Restaurants
+  - 🏪 Supermarkets
+  - ⚡ EV Charging Stations
+
+- **Customizable Search**:
+  - Adjust the number of nearest locations to display (1-20)
+  - Toggle different amenity types independently
+  - Color-coded markers for easy identification
+
+### Route Analysis
+- **Real Walking Routes**: Shows actual walking paths along streets (not just straight lines)
+- **Distance Calculations**: 
+  - Accurate walking distances
+  - Estimated walking times
+  - Estimated driving times
+- **Visual Route Display**: Color-coded paths for different amenity types
+
+### Information Display
+- **Interactive Markers**:
+  - Numbered markers indicating proximity order
+  - Hover tooltips with detailed information
+  - Click for persistent information display
+- **Detailed Information**:
+  - Full address when available
+  - Exact distance in kilometers
+  - Walking time estimates
+  - Driving time estimates
+  - Facility names and details
+
+### User Interface
+- **Clean, Modern Design**:
+  - Intuitive controls
+  - Responsive layout
+  - Mobile-friendly interface
+- **Real-time Updates**:
+  - Loading indicators
+  - Dynamic results
+  - Instant visual feedback
+
+## Technical Details
+
+### Technologies
+- **Frontend Framework**: Next.js 13+ with React
+- **Mapping**: Leaflet.js with React-Leaflet
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **APIs**:
+  - OpenStreetMap for base maps
+  - Nominatim for geocoding
+  - Overpass for amenity data
+  - OSRM/GraphHopper for routing
+
+### Key Components
+- Dynamic map rendering with SSR support
+- Geolocation services integration
+- Address autocomplete
+- Route calculation and optimization
+- Distance and time estimations
+
+### Performance Features
+- Dynamic loading of map components
+- Debounced search inputs
+- Optimized marker rendering
+- Sequential route fetching
+- Fallback mechanisms for routing services
+
+## Getting Started
+
 ### Prerequisites
-Ensure you have the following installed:
-- **Node.js** (version 16+ recommended)
-- **npm** or **yarn**
+- Node.js 16.0 or later
+- npm or yarn
+- Git
 
-### Steps
+### Installation
 1. **Clone the Repository**
    ```sh
    git clone https://github.com/yourusername/house-planner.git
