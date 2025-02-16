@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline, Popup } from 'react-leaflet';
+import LoadingCorner from './LoadingCorner';  // Add this import
 
 let L;
 if (typeof window !== 'undefined') {
@@ -38,43 +38,140 @@ const MapComponent = ({
   amenityMarkers,
   routes,
   onMapClick,
+  isLoading,
 }) => {
+  const [activeMarkerId, setActiveMarkerId] = useState(null);
   const defaultCenter = [51.0447, -114.0719]; // Calgary center
 
+  // Create custom colored icons for amenities
+  const getColoredIcon = (color) => {
+    return L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white;"></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+  };
+
+  const formatTime = (minutes) => {
+    return minutes >= 60 
+      ? `${Math.floor(minutes / 60)}h ${Math.round(minutes % 60)}m`
+      : `${Math.round(minutes)} min`;
+  };
+
+  const formatAddress = (tags) => {
+    if (!tags) return '';
+    const parts = [];
+    if (tags['addr:street']) {
+      parts.push(tags['addr:housenumber'] ? 
+        `${tags['addr:housenumber']} ${tags['addr:street']}` : 
+        tags['addr:street']
+      );
+    }
+    if (tags['addr:city']) parts.push(tags['addr:city']);
+    return parts.length > 0 ? parts.join(', ') : tags.address || '';
+  };
+
   return (
-    <MapContainer
-      center={defaultCenter}
-      zoom={13}
-      style={{ height: '100%', width: '100%' }}
-      scrollWheelZoom={true}
-    >
-      <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      />
-      <MapEvents onMapClick={onMapClick} />
-      {markerPosition && (
-        <Marker position={markerPosition} />
-      )}
-      {amenityMarkers.map((amenity, index) => (
-        <Marker
-          key={`${amenity.type}-${index}`}
-          position={amenity.position}
+    <div className="relative w-full h-full">
+      <MapContainer
+        center={defaultCenter}
+        zoom={13}
+        style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom={true}
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
-      ))}
-      {routes.map((route, index) => (
-        <Polyline
-          key={index}
-          positions={route.path}
-          color="blue"
-          weight={3}
-          opacity={0.6}
-        />
-      ))}
-      {selectedLocation && (
-        <MapController center={selectedLocation} zoom={13} />
-      )}
-    </MapContainer>
+        <MapEvents onMapClick={onMapClick} />
+        {markerPosition && (
+          <Marker 
+            position={markerPosition}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="background-color: #000; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white;"></div>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            })}
+          />
+        )}
+        {amenityMarkers.map((marker) => (
+          <Marker
+            key={marker.id}
+            position={marker.position}
+            eventHandlers={{
+              click: (e) => {
+                setActiveMarkerId(marker.id);
+                e.target.openPopup();
+              },
+              mouseover: (e) => {
+                if (activeMarkerId !== marker.id) {
+                  e.target.openPopup();
+                }
+              },
+              mouseout: (e) => {
+                if (activeMarkerId !== marker.id) {
+                  e.target.closePopup();
+                }
+              }
+            }}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `
+                <div style="
+                  background-color: ${marker.color};
+                  width: 24px;
+                  height: 24px;
+                  border-radius: 50%;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  color: white;
+                  font-weight: bold;
+                  font-size: 14px;
+                  border: 2px solid white;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                ">
+                  ${marker.number}
+                </div>
+              `,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            })}
+          >
+            <Popup>
+              <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
+                <strong>{marker.number}. {marker.name}</strong>
+                <br />
+                <span style={{ color: '#666' }}>
+                  {formatAddress(marker.tags) || 'Address unavailable'}
+                  <br />
+                  Distance: {(marker.distance).toFixed(2)} km
+                  <br />
+                  Walking: {formatTime(marker.distance * 12)}
+                  <br />
+                  Driving: {formatTime(marker.distance * 2)}
+                </span>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+        {routes.map((route, index) => (
+          <Polyline
+            key={index}
+            positions={route.path}
+            color={route.color}
+            weight={3}
+            opacity={0.8}
+          />
+        ))}
+        {selectedLocation && (
+          <MapController center={selectedLocation} zoom={13} />
+        )}
+      </MapContainer>
+      {isLoading && <LoadingCorner />}
+    </div>
   );
 };
 
