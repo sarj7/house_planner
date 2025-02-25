@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Webpack configuration to provide fallbacks for certain Node modules in the browser.
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -11,9 +12,7 @@ const nextConfig = {
     };
     return config;
   },
-  images: {
-    domains: ['cdnjs.cloudflare.com', 'unpkg.com'],
-  },
+  // Using CDN URLs so custom images configuration is not needed.
 }
 
 module.exports = nextConfig

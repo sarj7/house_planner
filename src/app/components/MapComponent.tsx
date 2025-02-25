@@ -2,22 +2,23 @@
 
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap, Polyline, Popup } from 'react-leaflet';
-import LoadingCorner from './LoadingCorner';  // Add this import
+import LoadingCorner from './LoadingCorner';
+import { calculateTime } from '../utils/routingService';
+import 'leaflet/dist/leaflet.css';
 
+// Import Leaflet on the client side only to avoid SSR issues.
 let L;
 if (typeof window !== 'undefined') {
   L = require('leaflet');
-  delete L.Icon.Default.prototype._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  });
+  // Set default image path for marker icons to avoid errors.
+  L.Icon.Default.imagePath = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/';
 }
 
+// Component to control map view settings.
 const MapController = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
+    // Center the map when the 'center' prop changes.
     if (center) {
       map.setView(center, zoom);
     }
@@ -25,6 +26,7 @@ const MapController = ({ center, zoom }) => {
   return null;
 };
 
+// Listen for map click events to capture new marker positions.
 const MapEvents = ({ onMapClick }) => {
   useMapEvents({
     click: onMapClick,
@@ -41,9 +43,9 @@ const MapComponent = ({
   isLoading,
 }) => {
   const [activeMarkerId, setActiveMarkerId] = useState(null);
-  const defaultCenter = [51.0447, -114.0719]; // Calgary center
+  const defaultCenter = [51.0447, -114.0719]; // Default center (e.g., Calgary)
 
-  // Create custom colored icons for amenities
+  // Create custom icons with a colored dot for amenity markers.
   const getColoredIcon = (color) => {
     return L.divIcon({
       className: 'custom-div-icon',
@@ -54,18 +56,21 @@ const MapComponent = ({
   };
 
   const formatTime = (minutes) => {
-    return minutes >= 60 
-      ? `${Math.floor(minutes / 60)}h ${Math.round(minutes % 60)}m`
-      : `${Math.round(minutes)} min`;
+    if (minutes < 1) return 'Less than 1 min';
+    if (minutes < 60) return `${Math.round(minutes)} mins`;
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  // Formats the address from marker tags.
   const formatAddress = (tags) => {
     if (!tags) return '';
     const parts = [];
     if (tags['addr:street']) {
-      parts.push(tags['addr:housenumber'] ? 
-        `${tags['addr:housenumber']} ${tags['addr:street']}` : 
-        tags['addr:street']
+      parts.push(tags['addr:housenumber']
+        ? `${tags['addr:housenumber']} ${tags['addr:street']}`
+        : tags['addr:street']
       );
     }
     if (tags['addr:city']) parts.push(tags['addr:city']);
@@ -80,11 +85,13 @@ const MapComponent = ({
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={true}
       >
+        {/* OpenStreetMap tile layer */}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
         <MapEvents onMapClick={onMapClick} />
+        {/* User-selected location marker */}
         {markerPosition && (
           <Marker 
             position={markerPosition}
@@ -96,6 +103,7 @@ const MapComponent = ({
             })}
           />
         )}
+        {/* Render amenity markers */}
         {amenityMarkers.map((marker) => (
           <Marker
             key={marker.id}
@@ -141,31 +149,39 @@ const MapComponent = ({
             })}
           >
             <Popup>
+              {/* Popup shows additional information about the amenity */}
               <div style={{ fontSize: '12px', lineHeight: '1.4' }}>
                 <strong>{marker.number}. {marker.name}</strong>
                 <br />
                 <span style={{ color: '#666' }}>
                   {formatAddress(marker.tags) || 'Address unavailable'}
                   <br />
-                  Distance: {(marker.distance).toFixed(2)} km
+                  {/* Add null check for distance */}
+                  Distance: {(marker.distance || 0).toFixed(2)} km
                   <br />
-                  Walking: {formatTime(marker.distance * 12)}
+                  Walking: {formatTime(calculateTime(marker.distance || 0, 'walking'))}
                   <br />
-                  Driving: {formatTime(marker.distance * 2)}
+                  Driving: {formatTime(
+                    calculateTime(marker.distance || 0, 'driving')
+                  )}
                 </span>
               </div>
             </Popup>
           </Marker>
         ))}
+        {/* Simplified route display with solid lines */}
         {routes.map((route, index) => (
           <Polyline
             key={index}
             positions={route.path}
-            color={route.color}
-            weight={3}
-            opacity={0.8}
+            pathOptions={{
+              color: route.color,
+              weight: 3,
+              opacity: 0.8
+            }}
           />
         ))}
+        {/* Center map on the selected location */}
         {selectedLocation && (
           <MapController center={selectedLocation} zoom={13} />
         )}

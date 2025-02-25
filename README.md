@@ -120,6 +120,10 @@
 5. Clicking on a marker will show the name and walking distance from the given address.
 6. A highlighted route from the address to the selected amenity will be shown.
 
+## Home Screen
+
+![House Planner Home Page](house_planner.jpg "House Planner Home Page")
+
 ## Configuration
 - If using an API key for external services (e.g., Nominatim, Overpass API), ensure it's set up in an `.env` file.
 - Customize map appearance and controls by modifying the Leaflet settings in the source code.
