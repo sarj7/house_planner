@@ -1,30 +1,22 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import './globals.css';
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 
-// Metadata configuration for SEO and browser info.
+const inter = Inter({ subsets: ['latin'] });
+
 export const metadata: Metadata = {
-  title: "HousePlanner",
-  description: "Find amenities near your location",
+  title: 'House Planner',
+  description: 'Find nearby amenities for your home',
 };
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
-    // Root layout for the application with necessary language settings
-    <html lang="en">
-      <head>
-        {/* Load Leaflet's CSS for map rendering */}
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/KFCR8CZ6vUslI5FkI="
-          crossOrigin=""
-        />
-      </head>
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>{children}</body>
     </html>
   );
 }

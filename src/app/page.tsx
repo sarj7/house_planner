@@ -12,6 +12,10 @@ const HousePlanner = dynamic(() => import('@/app/components/HousePlanner'), {
 });
 
 export default function Home() {
-  return <HousePlanner />;
+  return (
+    <main>
+      <HousePlanner />
+    </main>
+  );
 }
 
