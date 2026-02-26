@@ -2,22 +2,36 @@
 // Helper Functions
 // -------------------------
 
+export type TravelMode = 'walking' | 'driving';
+
+const AVERAGE_SPEEDS_KMH: Record<TravelMode, number> = {
+  walking: 5,
+  driving: 40,
+};
+
 // Helper to calculate direct distance (as the crow flies) between two points
 export const calculateDirectDistance = (
   lat1: number, lon1: number, lat2: number, lon2: number
 ): number => {
   const R = 6371e3; // Earth's radius in meters
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const phi1 = lat1 * Math.PI / 180;
+  const phi2 = lat2 * Math.PI / 180;
+  const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+  const deltaLambda = (lon2 - lon1) * Math.PI / 180;
 
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+            Math.cos(phi1) * Math.cos(phi2) *
+            Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
   return R * c; // Distance in meters
+};
+
+// Estimate travel time in minutes based on distance and mode
+export const calculateTime = (distanceKm: number, mode: TravelMode): number => {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) return 0;
+  const speed = AVERAGE_SPEEDS_KMH[mode] ?? AVERAGE_SPEEDS_KMH.walking;
+  return (distanceKm / speed) * 60;
 };
 
 // -------------------------
@@ -63,9 +77,7 @@ export const getRoute = async (
       start[0], start[1], end[0], end[1]
     );
     
-    // Estimate duration based on average walking speed (5 km/h)
-    const averageWalkingSpeedKmh = 5;
-    const durationInSeconds = (directDistance / 1000) / averageWalkingSpeedKmh * 3600;
+    const durationInSeconds = calculateTime(directDistance / 1000, 'walking') * 60;
 
     return {
       coordinates: [[start[1], start[0]], [end[1], end[0]]],

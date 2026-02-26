@@ -1,303 +1,247 @@
-/* Import TailwindCSS base styles */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Define CSS variables for light and dark color schemes */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 255, 251, 235;
-  --background-end-rgb: 254, 243, 199;
+  --ink: 20 28 34;
+  --paper: 255 249 242;
+  --accent: 198 103 60;
+  --accent-deep: 175 77 40;
+  --accent-cool: 32 119 111;
+  --accent-warm: 214 169 96;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  min-height: 100vh;
+  color: rgb(var(--ink));
+  background-color: rgb(var(--paper));
+  font-family: var(--font-body), 'Space Grotesk', system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+.font-display {
+  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+}
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(900px circle at 5% -5%, rgb(var(--accent-cool) / 0.2), transparent 55%),
+    radial-gradient(800px circle at 100% 5%, rgb(var(--accent) / 0.2), transparent 60%),
+    linear-gradient(145deg, #fff8ed 0%, #f6efe4 60%, #f2e7d5 100%);
+}
+
+.app-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgb(var(--ink) / 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--ink) / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-shell::after {
+  content: '';
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  right: -140px;
+  bottom: -180px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(var(--accent-warm) / 0.35), transparent 70%);
+  filter: blur(6px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.panel {
+  position: relative;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 28px;
+  box-shadow: 0 25px 70px rgb(15 23 42 / 0.12);
+  backdrop-filter: blur(16px);
+}
+
+.panel-section {
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(226, 232, 240, 0.7);
+  padding: 16px;
+}
+
+.map-card {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 32px;
+  box-shadow: 0 30px 80px rgb(15 23 42 / 0.18);
+}
+
+.map-card-fullscreen {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.map-skeleton {
+  background: linear-gradient(135deg, #f3ede3 0%, #f7f2e9 50%, #f2e9db 100%);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, rgb(var(--accent)) 0%, #d58f4e 60%, #e1b15c 100%);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.75rem 1.25rem;
+  border-radius: 999px;
+  box-shadow: 0 12px 30px rgb(var(--accent) / 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 35px rgb(var(--accent-deep) / 0.35);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-secondary {
+  border-radius: 999px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+  color: rgb(var(--ink));
+  box-shadow: 0 8px 20px rgb(15 23 42 / 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgb(15 23 42 / 0.12);
+}
+
+.reveal {
+  opacity: 0;
+  animation: reveal-up 0.6s ease forwards;
+}
+
+.reveal-delay-1 {
+  animation-delay: 0.1s;
+}
+
+.reveal-delay-2 {
+  animation-delay: 0.2s;
+}
+
+.reveal-delay-3 {
+  animation-delay: 0.3s;
+}
+
+.reveal-delay-4 {
+  animation-delay: 0.4s;
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* Apply the global background and text colors */
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-    to bottom right,
-    rgb(var(--background-start-rgb)),
-    rgb(var(--background-end-rgb))
-  );
-  min-height: 100vh;
-  font-family: Arial, Helvetica, sans-serif;
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
-/* Remove all custom popup styles if any */
-
-/* Add z-index handling for search predictions */
-.search-predictions {
-  z-index: 10000;
-  position: relative;
+.predictions-dropdown {
+  z-index: 9999;
 }
 
-/* Ensure map container stays below predictions */
 .leaflet-container {
-  z-index: 1;
   width: 100%;
   height: 100%;
-  height: 100% !important;
-  width: 100% !important;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
 }
 
-/* Ensure controls stay below predictions */
 .leaflet-control {
-  z-index: 1000;
+  z-index: 400;
 }
 
-/* Fix for Leaflet marker icon display */
 .leaflet-marker-icon {
   background: none !important;
   border: none !important;
 }
 
-/* Additional styling for map markers */
-.marker-cluster-small {
-  background-color: rgba(181, 226, 140, 0.6);
-}
-.marker-cluster-medium {
-  background-color: rgba(241, 211, 87, 0.6);
-}
-.marker-cluster-large {
-  background-color: rgba(253, 156, 115, 0.6);
-}
-
-.marker-cluster-small div,
-.marker-cluster-medium div,
-.marker-cluster-large div {
-  background-color: rgba(110, 204, 57, 0.6);
-}
-
 .leaflet-popup-content-wrapper {
-  border-radius: 8px;
-  padding: 2px;
-  box-shadow: 0 3px 14px rgba(0,0,0,0.2);
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 10px 30px rgb(15 23 42 / 0.2);
 }
 
 .leaflet-popup-content {
-  margin: 10px 14px;
+  margin: 0;
   line-height: 1.4;
 }
 
 .leaflet-container a.leaflet-popup-close-button {
   padding: 6px 10px 0 0;
-  color: #333;
-  font-weight: bold;
-}
-
-/* Fix for specific text colors that might be overridden */
-/* Changed from .!text-black to .text-black-important for valid CSS */
-.text-black-important {
-  color: black !important;
-}
-
-/* Support for fullscreen map mode */
-.map-fullscreen {
-  position: fixed !important;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 9000;
-  border-radius: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-/* Improved fullscreen map styles */
-.fullscreen-map {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 40 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
-/* Ensure the map container takes full height and width of its parent */
-.leaflet-container {
-  width: 100% !important;
-  height: 100% !important;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-}
-
-/* Ensure controls are above the map */
-.leaflet-control-container {
-  z-index: 1000;
-}
-
-/* When in fullscreen mode, adjust the z-index to ensure controls are visible */
-body.fullscreen-active .leaflet-control-container {
-  z-index: 9000;
-}
-
-/* When in fullscreen mode, make sure body doesn't have overflow */
-body.fullscreen-mode {
-  overflow: hidden;
-}
-
-/* Ensure the map expands to fill its container */
-.leaflet-container {
-  height: 100% !important;
-  width: 100% !important;
-}
-
-/* Fix for fullscreen transition */
-.transition-fullscreen {
-  transition: all 0.3s ease-in-out;
-}
-
-/* Animation for fullscreen toggle */
-.map-container {
-  transition: all 0.3s ease-in-out;
-}
-
-/* Make sure the fullscreen button is always visible */
-.fullscreen-button {
-  z-index: 1001;
-}
-
-/* Ensure the height is properly handled in fullscreen mode */
-.h-screen {
-  height: 100vh;
-}
-
-/* Add these specific rules to ensure the header is visible */
-
-/* Ensure the header stays above other content */
-.header-section {
-  position: relative;
-  z-index: 1000;
-}
-
-/* Fix for content overlap */
-.content-area {
-  position: relative;
-  z-index: 100;
-}
-
-/* When in fullscreen, ensure map is above everything */
-.fullscreen-map-container {
-  z-index: 9000;
-}
-
-/* Fix for map controls appearing above the header */
-.leaflet-control-container {
-  z-index: 800;
-}
-
-/* Ensure predictions dropdown stays on top */
-.predictions-dropdown {
-  z-index: 9999;
-}
-
-/* Add these styles for POI labels and tooltips */
-
-/* POI Label styling */
-.poi-label {
-  background: transparent;
-  border: none;
-}
-
-.poi-label-inner {
-  color: #333;
-  background-color: rgba(255, 255, 255, 0.7);
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-weight: 500;
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-
-/* Tooltip styling */
-.poi-tooltip {
-  background-color: rgba(255, 255, 255, 0.9);
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  padding: 3px 5px;
-  font-size: 11px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-}
-
-.poi-tooltip.leaflet-tooltip-left::before {
-  border-left-color: rgba(255, 255, 255, 0.9);
-}
-.poi-tooltip.leaflet-tooltip-right::before {
-  border-right-color: rgba(255, 255, 255, 0.9);
-}
-
-/* Amenity label styling */
-.amenity-label {
-  background-color: rgba(255, 255, 255, 0.9);
-  border: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  padding: 2px 6px;
+  color: #334155;
   font-weight: 600;
-  font-size: 11px;
-  white-space: nowrap;
-  border-radius: 4px;
+}
+
+.custom-popup .leaflet-popup-content-wrapper {
+  overflow: hidden;
+}
+
+.amenity-tooltip {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  padding: 4px 8px;
+  box-shadow: 0 8px 20px rgb(15 23 42 / 0.15);
+}
+
+.map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(2px);
+  z-index: 600;
   pointer-events: none;
 }
 
-/* Custom styling for specific amenity types */
-.amenity-label.ev-chargers {
-  color: #2ecc71;
-  border-bottom: 2px solid #2ecc71;
+.fullscreen-map {
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0 !important;
 }
 
-.amenity-label.hospitals {
-  color: #e74c3c;
-  border-bottom: 2px solid #e74c3c;
-}
-
-.amenity-label.schools {
-  color: #3498db;
-  border-bottom: 2px solid #3498db;
-}
-
-.amenity-label.restaurants {
-  color: #f39c12;
-  border-bottom: 2px solid #f39c12;
-}
-
-.amenity-label.supermarkets {
-  color: #9b59b6;
-  border-bottom: 2px solid #9b59b6;
-}
-
-/* Enhanced popup styling */
-.custom-popup .leaflet-popup-content-wrapper {
-  padding: 0;
-  border-radius: 8px;
+body.map-fullscreen-active {
   overflow: hidden;
-}
-
-.custom-popup .leaflet-popup-content {
-  margin: 0;
-  min-width: 200px;
 }
