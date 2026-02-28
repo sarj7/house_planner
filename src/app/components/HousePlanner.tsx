@@ -12,7 +12,9 @@ import { Place } from '../types';
 import DynamicMap from './DynamicMap';
 
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org';
+const POSITIONSTACK_API = 'https://api.positionstack.com/v1';
 const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
+const POSITIONSTACK_ACCESS_KEY = process.env.NEXT_PUBLIC_POSITIONSTACK_ACCESS_KEY ?? '';
 
 const DEFAULT_RADIUS = 2000;
 const DEFAULT_NUM_AMENITIES = 5;
@@ -39,6 +41,54 @@ const amenityOrder = Object.keys(amenityTags);
 const NOMINATIM_HEADERS = {
   Accept: 'application/json',
 };
+
+const getPositionstackResults = (payload: any): any[] => {
+  if (Array.isArray(payload?.data?.results)) return payload.data.results;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+};
+
+const getPositionstackErrorMessage = (payload: any) => {
+  if (typeof payload?.error?.message === 'string') return payload.error.message;
+  if (typeof payload?.error?.type === 'string') return payload.error.type;
+  if (typeof payload?.error === 'string') return payload.error;
+  return '';
+};
+
+const isPositionstackQuotaError = (payload: any, status?: number) => {
+  if (status === 429) return true;
+  const errorCode = Number(payload?.error?.code);
+  const message = getPositionstackErrorMessage(payload);
+  return (
+    errorCode === 104 ||
+    errorCode === 106 ||
+    /quota|rate limit|limit reached|monthly limit|usage limit/i.test(message)
+  );
+};
+
+class PositionstackError extends Error {
+  isQuotaError: boolean;
+
+  constructor(message: string, isQuotaError = false) {
+    super(message);
+    this.name = 'PositionstackError';
+    this.isQuotaError = isQuotaError;
+  }
+}
+
+interface PredictionOption {
+  id: string;
+  primaryText: string;
+  secondaryText: string;
+  label: string;
+  source: 'positionstack' | 'nominatim';
+  coordinates?: [number, number];
+}
+
+interface SearchResolution {
+  label: string;
+  coordinates: [number, number];
+}
 
 const formatAddress = (item: any) => {
   if (!item) return '';
@@ -106,8 +156,9 @@ const highlightMatch = (text: string, searchTerm: string) => {
 interface AddressInputProps {
   address: string;
   onChange: (value: string) => void;
-  predictions: Place[];
-  onSelect: (prediction: Place) => void;
+  predictions: PredictionOption[];
+  onSelect: (prediction: PredictionOption) => void;
+  onDismissPredictions: () => void;
   onReset: () => void;
   onSearch: () => void;
   isSearching: boolean;
@@ -118,71 +169,78 @@ const AddressInput: React.FC<AddressInputProps> = ({
   onChange,
   predictions,
   onSelect,
+  onDismissPredictions,
   onReset,
   onSearch,
   isSearching,
-}) => (
-  <div className="relative" style={{ zIndex: 10000 }}>
-    <div className="relative">
-      <input
-        type="text"
-        value={address}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onSearch();
-        }}
-        aria-label="Search for a place"
-        placeholder="Search a city, address, or landmark"
-        className="w-full rounded-2xl border border-slate-200/70 bg-white/90 px-4 py-3 pr-24 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
-      />
-      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 gap-2">
-        <button
-          type="button"
-          className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
-          onClick={onReset}
-          title="Reset everything"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 disabled:text-slate-300"
-          onClick={onSearch}
-          disabled={isSearching}
-          title="Search"
-        >
-          <Search className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
+}) => {
+  const hasPredictions = predictions.length > 0;
 
-    {predictions?.length > 0 && (
-      <div className="predictions-dropdown absolute mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-xl">
-        {predictions.map((prediction, idx) => {
-          const displayName = prediction.display_name || '';
-          const [mainPart, ...secondaryParts] = displayName.split(',');
-          return (
-            <button
-              key={`${prediction.place_id || idx}`}
-              onClick={() => onSelect(prediction)}
-              className="w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-amber-50"
-              type="button"
-            >
-              <div className="text-sm font-semibold text-slate-900">
-                {highlightMatch(mainPart, address)}
-              </div>
-              {secondaryParts.length > 0 && (
-                <div className="mt-1 text-xs text-slate-500">
-                  {highlightMatch(secondaryParts.join(','), address)}
-                </div>
-              )}
-            </button>
-          );
-        })}
+  return (
+    <div className="relative z-20">
+      <div className="relative">
+        <input
+          type="text"
+          value={address}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSearch();
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onDismissPredictions();
+            }
+          }}
+          aria-label="Search for a place"
+          placeholder="Search a city, address, or landmark"
+          className="w-full rounded-2xl border border-slate-200/70 bg-white/90 px-4 py-3 pr-24 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+        />
+        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 gap-2">
+          <button
+            type="button"
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100"
+            onClick={onReset}
+            title="Reset everything"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 disabled:text-slate-300"
+            onClick={onSearch}
+            disabled={isSearching}
+            title="Search"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-    )}
-  </div>
-);
+
+      {hasPredictions && (
+        <div className="predictions-dropdown absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white/95 shadow-xl">
+          {predictions.map((prediction, idx) => {
+            return (
+              <button
+                key={`${prediction.id || idx}`}
+                onClick={() => onSelect(prediction)}
+                className="block w-full border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 hover:bg-amber-50"
+                type="button"
+              >
+                <div className="text-sm font-semibold text-slate-900">
+                  {highlightMatch(prediction.primaryText, address)}
+                </div>
+                {prediction.secondaryText && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    {highlightMatch(prediction.secondaryText, address)}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface AmenitiesListProps {
   routes: any[];
@@ -255,7 +313,8 @@ const AmenitiesList: React.FC<AmenitiesListProps> = ({ routes }) => {
 const HousePlanner: React.FC = () => {
   const { location: userLocation, error: geolocationError } = useGeolocation();
   const [searchAddress, setSearchAddress] = useState('');
-  const [predictions, setPredictions] = useState<Place[]>([]);
+  const [confirmedSearchAddress, setConfirmedSearchAddress] = useState('');
+  const [predictions, setPredictions] = useState<PredictionOption[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<[number, number] | null>(null);
   const [markerPosition, setMarkerPosition] = useState<[number, number] | null>(null);
   const [amenityMarkers, setAmenityMarkers] = useState<any[]>([]);
@@ -272,10 +331,15 @@ const HousePlanner: React.FC = () => {
   const [numAmenities, setNumAmenities] = useState(DEFAULT_NUM_AMENITIES);
   const [isClient, setIsClient] = useState(false);
   const selectedAmenityCount = Object.values(selectedAmenities).filter(Boolean).length;
+  const hasSelectedAmenities = selectedAmenityCount > 0;
 
   const mapRef = useRef<LeafletMap | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTokenRef = useRef(0);
+  const reverseGeocodeTokenRef = useRef(0);
+  const predictionAbortRef = useRef<AbortController | null>(null);
+  const predictionRequestRef = useRef(0);
+  const positionstackEnabledRef = useRef(Boolean(POSITIONSTACK_ACCESS_KEY));
 
   useEffect(() => {
     setIsClient(true);
@@ -291,14 +355,19 @@ const HousePlanner: React.FC = () => {
 
   const setLocationAndClear = useCallback((lat: number, lon: number) => {
     searchTokenRef.current += 1;
+    reverseGeocodeTokenRef.current += 1;
     setSelectedLocation([lat, lon]);
     setMarkerPosition([lat, lon]);
     setAmenityMarkers([]);
     setRoutes([]);
     setAmenitiesError(null);
+    setConfirmedSearchAddress('');
   }, []);
 
   const reverseGeocode = useCallback(async (lat: number, lon: number) => {
+    const token = reverseGeocodeTokenRef.current;
+    const fallbackLabel = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
     try {
       const params = new URLSearchParams({
         format: 'jsonv2',
@@ -312,13 +381,18 @@ const HousePlanner: React.FC = () => {
       });
       if (!resp.ok) throw new Error('Reverse geocoding failed');
       const data = await resp.json();
-      setSearchAddress(formatAddress(data) || `${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+      if (token !== reverseGeocodeTokenRef.current) return;
+      const nextAddress = formatAddress(data) || fallbackLabel;
+      setSearchAddress(nextAddress);
+      setConfirmedSearchAddress(nextAddress);
     } catch {
-      setSearchAddress(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
+      if (token !== reverseGeocodeTokenRef.current) return;
+      setSearchAddress(fallbackLabel);
+      setConfirmedSearchAddress(fallbackLabel);
     }
   }, []);
 
-  const searchPlaces = useCallback(async (searchText: string, limit = 6) => {
+  const searchPlaces = useCallback(async (searchText: string, limit = 6, signal?: AbortSignal) => {
     const params = new URLSearchParams({
       format: 'jsonv2',
       q: searchText,
@@ -327,31 +401,190 @@ const HousePlanner: React.FC = () => {
     });
     const res = await fetch(`${NOMINATIM_API}/search?${params.toString()}`, {
       headers: NOMINATIM_HEADERS,
+      signal,
     });
     if (!res.ok) throw new Error(`Search failed: ${res.status}`);
     const data = await res.json();
     return Array.isArray(data) ? (data as Place[]) : [];
   }, []);
 
+  const normalizeNominatimPredictions = useCallback((results: Place[]): PredictionOption[] => {
+    return results.map((result, idx): PredictionOption => {
+      const displayName = result.display_name || '';
+      const [mainPart, ...secondaryParts] = displayName.split(',');
+      const lat = Number(result.lat);
+      const lon = Number(result.lon);
+
+      return {
+        id: String(result.place_id || `${displayName}-${idx}`),
+        primaryText: mainPart?.trim() || displayName,
+        secondaryText: secondaryParts.join(',').trim(),
+        label: formatAddress(result) || displayName,
+        source: 'nominatim' as const,
+        coordinates: Number.isFinite(lat) && Number.isFinite(lon) ? ([lat, lon] as [number, number]) : undefined,
+      };
+    });
+  }, []);
+
+  const normalizePositionstackPredictions = useCallback(
+    (results: any[]): PredictionOption[] => {
+      return results.map((result: any, idx: number): PredictionOption => {
+        const label = typeof result?.label === 'string' ? result.label : '';
+        const primaryText =
+          typeof result?.name === 'string' && result.name.trim()
+            ? result.name.trim()
+            : label.split(',')[0]?.trim() || label;
+        const secondaryText =
+          label && label.startsWith(primaryText)
+            ? label.slice(primaryText.length).replace(/^,\s*/, '').trim()
+            : '';
+        const lat = Number(result?.latitude);
+        const lon = Number(result?.longitude);
+
+        return {
+          id: String(result?.id || result?.label || `${primaryText}-${idx}`),
+          primaryText,
+          secondaryText,
+          label: label || primaryText,
+          source: 'positionstack' as const,
+          coordinates: Number.isFinite(lat) && Number.isFinite(lon) ? ([lat, lon] as [number, number]) : undefined,
+        };
+      });
+    },
+    []
+  );
+
+  const searchPredictionsPositionstack = useCallback(
+    async (searchText: string, signal?: AbortSignal) => {
+      const params = new URLSearchParams({
+        access_key: POSITIONSTACK_ACCESS_KEY,
+        query: searchText,
+        limit: '6',
+      });
+
+      const res = await fetch(`${POSITIONSTACK_API}/forward?${params.toString()}`, { signal });
+      const data = await res.json().catch(() => null);
+      const message = getPositionstackErrorMessage(data);
+
+      if (!res.ok || message) {
+        throw new PositionstackError(
+          message || `Positionstack search failed: ${res.status}`,
+          isPositionstackQuotaError(data, res.status)
+        );
+      }
+
+      const results = getPositionstackResults(data);
+      return normalizePositionstackPredictions(results);
+    },
+    [normalizePositionstackPredictions]
+  );
+
+  const searchPositionstackSingle = useCallback(
+    async (query: string) => {
+      const params = new URLSearchParams({
+        access_key: POSITIONSTACK_ACCESS_KEY,
+        query,
+        limit: '1',
+      });
+
+      const res = await fetch(`${POSITIONSTACK_API}/forward?${params.toString()}`);
+      const data = await res.json().catch(() => null);
+      const message = getPositionstackErrorMessage(data);
+
+      if (!res.ok || message) {
+        throw new PositionstackError(
+          message || `Positionstack search failed: ${res.status}`,
+          isPositionstackQuotaError(data, res.status)
+        );
+      }
+
+      const result = getPositionstackResults(data)[0] ?? null;
+      const lat = Number(result?.latitude);
+      const lon = Number(result?.longitude);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return null;
+      }
+
+      const label =
+        (typeof result?.label === 'string' && result.label) ||
+        (typeof result?.name === 'string' && result.name) ||
+        `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+      return {
+        label,
+        coordinates: [lat, lon] as [number, number],
+      };
+    },
+    []
+  );
+
+  const handlePositionstackFailure = useCallback((error: unknown) => {
+    if (error instanceof PositionstackError && error.isQuotaError) {
+      positionstackEnabledRef.current = false;
+      console.warn('Positionstack quota reached. Falling back to Nominatim search.');
+      return;
+    }
+
+    if (error instanceof Error) {
+      console.warn('Positionstack search failed. Falling back to Nominatim.', error.message);
+    }
+  }, []);
+
+  const applyResolvedLocation = useCallback(
+    ({ label, coordinates }: SearchResolution) => {
+      const [lat, lon] = coordinates;
+      setLocationAndClear(lat, lon);
+      setSearchAddress(label);
+      setConfirmedSearchAddress(label);
+      setPredictions([]);
+      setSearchError(null);
+    },
+    [setLocationAndClear]
+  );
+
   const fetchPredictions = useCallback(
     async (searchText: string) => {
       if (!searchText || searchText.length < 2) {
+        predictionAbortRef.current?.abort();
         setPredictions([]);
         return;
       }
+      const requestId = ++predictionRequestRef.current;
+      predictionAbortRef.current?.abort();
+      const controller = new AbortController();
+      predictionAbortRef.current = controller;
+
       try {
-        const results = await searchPlaces(searchText, 6);
+        let results: PredictionOption[] = [];
+
+        if (positionstackEnabledRef.current) {
+          try {
+            results = await searchPredictionsPositionstack(searchText, controller.signal);
+          } catch (error) {
+            handlePositionstackFailure(error);
+            results = [];
+          }
+        }
+
+        if (!results.length) {
+          results = normalizeNominatimPredictions(await searchPlaces(searchText, 6, controller.signal));
+        }
+
+        if (requestId !== predictionRequestRef.current) return;
         setPredictions(results);
       } catch {
+        if (controller.signal.aborted || requestId !== predictionRequestRef.current) return;
         setPredictions([]);
       }
     },
-    [searchPlaces]
+    [handlePositionstackFailure, normalizeNominatimPredictions, searchPlaces, searchPredictionsPositionstack]
   );
 
   useEffect(() => {
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      predictionAbortRef.current?.abort();
     };
   }, []);
 
@@ -361,6 +594,7 @@ const HousePlanner: React.FC = () => {
       setSearchError(null);
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
       if (!value || value.trim().length < 2) {
+        predictionAbortRef.current?.abort();
         setPredictions([]);
         return;
       }
@@ -372,17 +606,31 @@ const HousePlanner: React.FC = () => {
   );
 
   const handlePredictionSelect = useCallback(
-    (prediction: Place) => {
-      if (!prediction?.lat || !prediction?.lon) return;
-      const lat = Number(prediction.lat);
-      const lon = Number(prediction.lon);
-      setSearchAddress(formatAddress(prediction));
-      setPredictions([]);
+    async (prediction: PredictionOption) => {
+      setIsSearchingAddress(true);
       setSearchError(null);
-      setLocationAndClear(lat, lon);
+      try {
+        if (prediction.coordinates) {
+          applyResolvedLocation({
+            label: prediction.label,
+            coordinates: prediction.coordinates,
+          });
+          return;
+        }
+
+        setSearchError('Search failed. Please try again.');
+      } catch {
+        setSearchError('Search failed. Please try again.');
+      } finally {
+        setIsSearchingAddress(false);
+      }
     },
-    [setLocationAndClear]
+    [applyResolvedLocation]
   );
+
+  const handleDismissPredictions = useCallback(() => {
+    setPredictions([]);
+  }, []);
 
   const handleManualSearch = useCallback(async () => {
     const query = searchAddress.trim();
@@ -390,18 +638,38 @@ const HousePlanner: React.FC = () => {
     setIsSearchingAddress(true);
     setSearchError(null);
     try {
+      let resolution: SearchResolution | null = null;
+
+      if (positionstackEnabledRef.current) {
+        try {
+          resolution = await searchPositionstackSingle(query);
+        } catch (error) {
+          handlePositionstackFailure(error);
+        }
+      }
+
+      if (resolution) {
+        applyResolvedLocation(resolution);
+        return;
+      }
+
       const results = await searchPlaces(query, 1);
-      if (!results.length) {
+      if (!results.length || !results[0]?.lat || !results[0]?.lon) {
         setSearchError('No matches found. Try a broader search.');
         return;
       }
-      handlePredictionSelect(results[0]);
+      const lat = Number(results[0].lat);
+      const lon = Number(results[0].lon);
+      applyResolvedLocation({
+        label: formatAddress(results[0]) || `${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+        coordinates: [lat, lon],
+      });
     } catch {
       setSearchError('Search failed. Please try again.');
     } finally {
       setIsSearchingAddress(false);
     }
-  }, [searchAddress, searchPlaces, handlePredictionSelect]);
+  }, [applyResolvedLocation, handlePositionstackFailure, searchAddress, searchPlaces, searchPositionstackSingle]);
 
   const fetchNearbyAmenities = useCallback(
     async (lat: number, lon: number, amenityType: string) => {
@@ -564,11 +832,13 @@ const HousePlanner: React.FC = () => {
       clearTimeout(searchTimeoutRef.current);
     }
     searchTokenRef.current += 1;
+    predictionAbortRef.current?.abort();
     setSelectedLocation(null);
     setMarkerPosition(null);
     setAmenityMarkers([]);
     setRoutes([]);
     setSearchAddress('');
+    setConfirmedSearchAddress('');
     setPredictions([]);
     setSelectedAmenities(amenityOrder.reduce((acc, key) => ({ ...acc, [key]: false }), {}));
     setNumAmenities(DEFAULT_NUM_AMENITIES);
@@ -613,41 +883,59 @@ const HousePlanner: React.FC = () => {
       <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:flex-row lg:gap-6 lg:px-6 lg:py-6">
         <aside
           className={clsx(
-            'panel order-2 flex flex-col gap-4 overflow-visible p-4 sm:gap-5 sm:p-5 lg:order-1 lg:w-[420px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
+            'panel order-2 flex flex-col gap-4 overflow-visible p-4 sm:gap-5 sm:p-5 lg:order-1 lg:w-[400px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
             {
               hidden: isMapFullscreen,
             }
           )}
         >
-          <header className="space-y-3 reveal reveal-delay-1">
+          <header className="space-y-2 reveal reveal-delay-1">
             <div className="text-[10px] uppercase tracking-[0.32em] text-slate-500 sm:text-[11px]">
               House Planner
             </div>
-            <h1 className="font-display text-[2rem] leading-tight text-slate-900 sm:text-4xl">
-              Design your daily radius
+            <h1 className="font-display text-3xl leading-none text-slate-900 sm:text-4xl">
+              Plan your area
             </h1>
-            <p className="max-w-xl text-sm leading-6 text-slate-600">
-              Compare walking and driving access to essentials before you pick a place to live.
+            <p className="max-w-md text-sm leading-6 text-slate-600">
+              Pick a home location, choose the amenities you care about, then compare nearby options.
             </p>
-            <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <span className="rounded-full bg-white/80 px-3 py-2 shadow-sm">Tap map to drop home</span>
-              <span className="rounded-full bg-white/80 px-3 py-2 shadow-sm">Review routes instantly</span>
-            </div>
           </header>
 
-          <section className="panel-section sticky top-3 z-20 space-y-3 reveal reveal-delay-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Search location
+          <section className="panel-section relative z-10 space-y-4 reveal reveal-delay-2">
+            <div className="space-y-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                1. Choose a location
+              </div>
+              <p className="text-xs leading-5 text-slate-500">
+                Search for an address, use your current location, or tap the map.
+              </p>
             </div>
-            <AddressInput
-              address={searchAddress}
-              onChange={handleInputChange}
-              predictions={predictions}
-              onSelect={handlePredictionSelect}
-              onReset={handleReset}
-              onSearch={handleManualSearch}
-              isSearching={isSearchingAddress}
-            />
+            {selectedLocation && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Selected location</div>
+                <div className="mt-1 text-sm font-semibold leading-5 text-slate-900">
+                  {confirmedSearchAddress || `${selectedLocation[0].toFixed(4)}, ${selectedLocation[1].toFixed(4)}`}
+                </div>
+                <div className="mt-2 text-xs text-slate-500">
+                  {selectedLocation[0].toFixed(4)}, {selectedLocation[1].toFixed(4)}
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Search location
+              </div>
+              <AddressInput
+                address={searchAddress}
+                onChange={handleInputChange}
+                predictions={predictions}
+                onSelect={handlePredictionSelect}
+                onDismissPredictions={handleDismissPredictions}
+                onReset={handleReset}
+                onSearch={handleManualSearch}
+                isSearching={isSearchingAddress}
+              />
+            </div>
             {searchError && <p className="text-xs text-rose-600">{searchError}</p>}
             <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:flex-wrap sm:items-center">
               <button
@@ -661,26 +949,21 @@ const HousePlanner: React.FC = () => {
               </button>
               {geolocationError && <span className="text-rose-600">{geolocationError}</span>}
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
-              <div className="rounded-2xl bg-slate-50/85 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Radius</div>
-                <div className="mt-1 font-semibold text-slate-900">{(radius / 1000).toFixed(1)} km</div>
-              </div>
-              <div className="rounded-2xl bg-slate-50/85 px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Filters</div>
-                <div className="mt-1 font-semibold text-slate-900">{selectedAmenityCount} active</div>
-              </div>
-              <div className="col-span-2 rounded-2xl bg-slate-50/85 px-3 py-3 sm:col-span-1">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Results</div>
-                <div className="mt-1 font-semibold text-slate-900">{routes.length} routes ready</div>
-              </div>
-            </div>
           </section>
 
-          {selectedLocation && (
-            <section className="panel-section space-y-3 reveal reveal-delay-3">
-              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                <span>Discovery radius</span>
+          <section className="panel-section relative z-0 space-y-4 reveal reveal-delay-3">
+            <div className="space-y-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                2. Choose what to compare
+              </div>
+              <p className="text-xs leading-5 text-slate-500">
+                Set the search radius and select the amenities you want to see.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                <span>Radius</span>
                 <span className="text-slate-700">{(radius / 1000).toFixed(1)} km</span>
               </div>
               <input
@@ -692,13 +975,11 @@ const HousePlanner: React.FC = () => {
                 onChange={(e) => setRadius(Number(e.target.value))}
                 className="w-full accent-amber-500"
               />
-              <p className="text-xs text-slate-500">
-                Pull the radius tighter for walkable options or widen it to compare more.
+              <p className="text-xs leading-5 text-slate-500">
+                Smaller radius shows closer options. Larger radius shows more choices.
               </p>
-            </section>
-          )}
+            </div>
 
-          <section className="panel-section reveal reveal-delay-3">
             <AmenityControls
               numAmenities={numAmenities}
               setNumAmenities={setNumAmenities}
@@ -709,24 +990,38 @@ const HousePlanner: React.FC = () => {
           </section>
 
           {selectedLocation && (
-            <section className="panel-section sticky bottom-3 space-y-2 reveal reveal-delay-4">
+            <section className="panel-section space-y-3 reveal reveal-delay-4">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  3. Search
+                </div>
+                <p className="text-xs leading-5 text-slate-500">
+                  Choose at least one amenity, then search nearby places.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={performAmenitySearch}
-                disabled={isLoadingAmenities || !selectedAmenityCount}
+                disabled={isLoadingAmenities || !hasSelectedAmenities}
                 className="btn-primary w-full"
               >
                 {isLoadingAmenities ? 'Searching amenities...' : 'Find nearby amenities'}
               </button>
-              <p className="text-xs text-slate-500">
-                Changing amenity filters or counts refreshes the results automatically.
-              </p>
+              {!hasSelectedAmenities && (
+                <p className="text-xs text-slate-500">Select one or more amenity types to continue.</p>
+              )}
             </section>
           )}
 
           {amenitiesError && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {amenitiesError}
+            </div>
+          )}
+
+          {routes.length > 0 && (
+            <div className="px-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Results
             </div>
           )}
 
@@ -747,9 +1042,9 @@ const HousePlanner: React.FC = () => {
           </div>
           <div
             className={clsx(
-              'relative overflow-hidden',
+              'relative overflow-hidden lg:rounded-[2.25rem]',
               {
-                'map-card h-[52svh] min-h-[360px] sm:h-[58svh] lg:h-[calc(100vh-3rem)]': !isMapFullscreen,
+                'map-card map-stage h-[52svh] min-h-[360px] sm:h-[58svh] lg:h-[calc(100vh-3rem)]': !isMapFullscreen,
                 'map-card-fullscreen fixed inset-0 z-50 h-screen w-screen': isMapFullscreen,
               }
             )}

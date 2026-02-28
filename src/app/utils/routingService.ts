@@ -40,7 +40,7 @@ export const calculateTime = (distanceKm: number, mode: TravelMode): number => {
 
 // Get a route between two points
 export const getRoute = async (
-  start: [number, number], 
+  start: [number, number],
   end: [number, number]
 ): Promise<{
   coordinates: [number, number][];
@@ -49,41 +49,43 @@ export const getRoute = async (
   isEstimate: boolean;
 }> => {
   try {
-    // Try to use OSRM for routing
-    const response = await fetch(
-      `https://router.project-osrm.org/route/v1/foot/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
-    );
-    
+    const response = await fetch('/api/route', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ start, end }),
+    });
+
     if (response.ok) {
       const data = await response.json();
-      
-      if (data.routes && data.routes.length > 0) {
-        const route = data.routes[0];
+
+      if (Array.isArray(data?.coordinates) && Number.isFinite(data?.distance) && Number.isFinite(data?.duration)) {
         return {
-          coordinates: route.geometry.coordinates,
-          distance: route.distance,
-          duration: route.duration,
-          isEstimate: false
+          coordinates: data.coordinates,
+          distance: data.distance,
+          duration: data.duration,
+          isEstimate: Boolean(data.isEstimate),
         };
       }
     }
-    
+
     throw new Error('Route calculation failed');
   } catch (error) {
     console.error('Error fetching route:', error);
-    
+
     // Fall back to direct line if routing fails
     const directDistance = calculateDirectDistance(
       start[0], start[1], end[0], end[1]
     );
-    
+
     const durationInSeconds = calculateTime(directDistance / 1000, 'walking') * 60;
 
     return {
       coordinates: [[start[1], start[0]], [end[1], end[0]]],
       distance: directDistance,
       duration: durationInSeconds,
-      isEstimate: true
+      isEstimate: true,
     };
   }
 };

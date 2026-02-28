@@ -3,6 +3,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import {
   MapContainer,
   TileLayer,
@@ -21,9 +24,9 @@ import { Amenity, Location } from '../types';
 if (typeof window !== 'undefined') {
   delete (L.Icon.Default.prototype as any)._getIconUrl;
   L.Icon.Default.mergeOptions({
-    iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png').default,
-    iconUrl: require('leaflet/dist/images/marker-icon.png').default,
-    shadowUrl: require('leaflet/dist/images/marker-shadow.png').default,
+    iconRetinaUrl: markerIcon2x.src,
+    iconUrl: markerIcon.src,
+    shadowUrl: markerShadow.src,
   });
 }
 

@@ -88,6 +88,16 @@ body {
   box-shadow: 0 30px 80px rgb(15 23 42 / 0.18);
 }
 
+.map-stage::before {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: 28px;
+  border: 1px solid rgb(255 255 255 / 0.45);
+  pointer-events: none;
+  z-index: 450;
+}
+
 .map-card-fullscreen {
   background: transparent;
   border: none;
@@ -259,6 +269,10 @@ body.map-fullscreen-active {
 }
 
 @media (max-width: 1023px) {
+  .map-stage::before {
+    display: none;
+  }
+
   .app-shell {
     min-height: 100svh;
   }
