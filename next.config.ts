@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: process.cwd(),
   // Webpack configuration to provide fallbacks for certain Node modules in the browser.
   webpack: (config) => {
     config.resolve.fallback = {

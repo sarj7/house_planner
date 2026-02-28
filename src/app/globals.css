@@ -15,12 +15,12 @@ body {
   min-height: 100vh;
   color: rgb(var(--ink));
   background-color: rgb(var(--paper));
-  font-family: var(--font-body), 'Space Grotesk', system-ui, sans-serif;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
   text-rendering: optimizeLegibility;
 }
 
 .font-display {
-  font-family: var(--font-display), 'Fraunces', Georgia, serif;
+  font-family: Iowan Old Style, 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
 }
 
 .app-shell {

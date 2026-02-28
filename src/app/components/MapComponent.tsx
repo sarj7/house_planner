@@ -177,7 +177,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
         width: '100%',
       }}
       className={isFullscreen ? 'fullscreen-map' : ''}
-      whenCreated={(mapInstance) => {
+      ref={(mapInstance) => {
+        if (!mapInstance) return;
         setMap(mapInstance);
         setMapRef?.(mapInstance);
       }}
@@ -236,7 +237,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       )}
 
       {amenityMarkers.map((marker, idx) => {
-        const routeInfo = routeByAmenityId.get(marker.id);
+        const routeInfo = marker.id !== undefined ? routeByAmenityId.get(marker.id) : undefined;
         const distance = routeInfo?.distance ?? marker.distance;
         const walkingMinutes = routeInfo?.duration
           ? routeInfo.duration / 60
