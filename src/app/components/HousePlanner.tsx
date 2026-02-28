@@ -271,6 +271,7 @@ const HousePlanner: React.FC = () => {
   );
   const [numAmenities, setNumAmenities] = useState(DEFAULT_NUM_AMENITIES);
   const [isClient, setIsClient] = useState(false);
+  const selectedAmenityCount = Object.values(selectedAmenities).filter(Boolean).length;
 
   const mapRef = useRef<LeafletMap | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -609,28 +610,32 @@ const HousePlanner: React.FC = () => {
 
   return (
     <div className="app-shell">
-      <div className="flex min-h-screen flex-col gap-4 p-4 lg:flex-row lg:gap-6 lg:p-6">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:flex-row lg:gap-6 lg:px-6 lg:py-6">
         <aside
           className={clsx(
-            'panel flex flex-col gap-6 overflow-y-auto p-6 lg:w-[420px] lg:max-h-[calc(100vh-3rem)]',
+            'panel order-2 flex flex-col gap-4 overflow-visible p-4 sm:gap-5 sm:p-5 lg:order-1 lg:w-[420px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
             {
               hidden: isMapFullscreen,
             }
           )}
         >
-          <header className="space-y-2 reveal reveal-delay-1">
-            <div className="text-[11px] uppercase tracking-[0.35em] text-slate-500">
+          <header className="space-y-3 reveal reveal-delay-1">
+            <div className="text-[10px] uppercase tracking-[0.32em] text-slate-500 sm:text-[11px]">
               House Planner
             </div>
-            <h1 className="font-display text-3xl text-slate-900 md:text-4xl">
+            <h1 className="font-display text-[2rem] leading-tight text-slate-900 sm:text-4xl">
               Design your daily radius
             </h1>
-            <p className="text-sm text-slate-600">
+            <p className="max-w-xl text-sm leading-6 text-slate-600">
               Compare walking and driving access to essentials before you pick a place to live.
             </p>
+            <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <span className="rounded-full bg-white/80 px-3 py-2 shadow-sm">Tap map to drop home</span>
+              <span className="rounded-full bg-white/80 px-3 py-2 shadow-sm">Review routes instantly</span>
+            </div>
           </header>
 
-          <section className="panel-section space-y-3 reveal reveal-delay-2">
+          <section className="panel-section sticky top-3 z-20 space-y-3 reveal reveal-delay-2">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               Search location
             </div>
@@ -644,17 +649,31 @@ const HousePlanner: React.FC = () => {
               isSearching={isSearchingAddress}
             />
             {searchError && <p className="text-xs text-rose-600">{searchError}</p>}
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:flex-wrap sm:items-center">
               <button
                 type="button"
                 onClick={handleUseMyLocation}
-                className="btn-secondary flex items-center gap-2"
+                className="btn-secondary flex min-h-11 items-center justify-center gap-2"
                 disabled={!userLocation}
               >
                 <LocateFixed className="h-4 w-4" />
                 Use my location
               </button>
               {geolocationError && <span className="text-rose-600">{geolocationError}</span>}
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+              <div className="rounded-2xl bg-slate-50/85 px-3 py-3">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Radius</div>
+                <div className="mt-1 font-semibold text-slate-900">{(radius / 1000).toFixed(1)} km</div>
+              </div>
+              <div className="rounded-2xl bg-slate-50/85 px-3 py-3">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Filters</div>
+                <div className="mt-1 font-semibold text-slate-900">{selectedAmenityCount} active</div>
+              </div>
+              <div className="col-span-2 rounded-2xl bg-slate-50/85 px-3 py-3 sm:col-span-1">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Results</div>
+                <div className="mt-1 font-semibold text-slate-900">{routes.length} routes ready</div>
+              </div>
             </div>
           </section>
 
@@ -690,11 +709,11 @@ const HousePlanner: React.FC = () => {
           </section>
 
           {selectedLocation && (
-            <section className="panel-section space-y-2 reveal reveal-delay-4">
+            <section className="panel-section sticky bottom-3 space-y-2 reveal reveal-delay-4">
               <button
                 type="button"
                 onClick={performAmenitySearch}
-                disabled={isLoadingAmenities || !Object.values(selectedAmenities).some(Boolean)}
+                disabled={isLoadingAmenities || !selectedAmenityCount}
                 className="btn-primary w-full"
               >
                 {isLoadingAmenities ? 'Searching amenities...' : 'Find nearby amenities'}
@@ -714,12 +733,23 @@ const HousePlanner: React.FC = () => {
           <AmenitiesList routes={routes} />
         </aside>
 
-        <section className="relative flex-1">
+        <section className="relative order-1 flex-1 lg:order-2">
+          <div className="mb-3 flex items-center justify-between gap-3 px-1 lg:hidden">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Map Preview</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                {selectedLocation ? 'Tap markers to inspect routes' : 'Search or tap the map to begin'}
+              </div>
+            </div>
+            <div className="rounded-full bg-white/85 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm">
+              {amenityMarkers.length} pins
+            </div>
+          </div>
           <div
             className={clsx(
               'relative overflow-hidden',
               {
-                'map-card h-[60vh] lg:h-[calc(100vh-3rem)]': !isMapFullscreen,
+                'map-card h-[52svh] min-h-[360px] sm:h-[58svh] lg:h-[calc(100vh-3rem)]': !isMapFullscreen,
                 'map-card-fullscreen fixed inset-0 z-50 h-screen w-screen': isMapFullscreen,
               }
             )}
@@ -745,7 +775,7 @@ const HousePlanner: React.FC = () => {
             )}
             <button
               onClick={toggleMapFullscreen}
-              className="absolute right-4 top-4 z-[500] rounded-full bg-white/90 p-2 text-slate-700 shadow-md transition hover:bg-white"
+              className="absolute right-3 top-3 z-[500] rounded-full bg-white/90 p-2.5 text-slate-700 shadow-md transition hover:bg-white sm:right-4 sm:top-4"
               title={isMapFullscreen ? 'Exit fullscreen' : 'View fullscreen map'}
               type="button"
             >

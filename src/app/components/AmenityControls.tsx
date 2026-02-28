@@ -17,9 +17,9 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
 }) => {
   return (
     <div className="space-y-4" data-testid="amenity-controls">
-      <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+      <div className="flex flex-col gap-3 rounded-2xl bg-slate-50/80 px-3 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <span>Show</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:justify-end">
           <input
             type="number"
             min="1"
@@ -29,21 +29,21 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
               const nextValue = Math.max(1, parseInt(e.target.value, 10) || 1);
               setNumAmenities(Math.min(20, nextValue));
             }}
-            className="w-14 rounded-md border border-slate-200 bg-white px-2 py-1 text-center text-sm text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="h-10 w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             data-testid="amenity-count-input"
           />
           <span className="text-[11px] text-slate-500">nearest each</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {Object.entries(amenityColors).map(([type, color]) => {
           const isSelected = selectedAmenities[type];
           return (
             <button
               key={type}
               onClick={() => toggleAmenity(type)}
-              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition ${
+              className={`flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-medium transition ${
                 isSelected ? 'text-white shadow-md' : 'bg-white text-slate-700 hover:bg-slate-50'
               }`}
               style={{

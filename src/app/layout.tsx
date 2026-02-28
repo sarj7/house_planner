@@ -6,6 +6,12 @@ export const metadata: Metadata = {
   description: 'Find nearby amenities for your home',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export default function RootLayout({
   children,
 }: {

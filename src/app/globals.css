@@ -190,6 +190,18 @@ body {
   z-index: 400;
 }
 
+.leaflet-touch .leaflet-bar a,
+.leaflet-touch .leaflet-bar a:hover {
+  width: 38px;
+  height: 38px;
+  line-height: 38px;
+}
+
+.leaflet-touch .leaflet-control-layers-toggle {
+  width: 38px;
+  height: 38px;
+}
+
 .leaflet-marker-icon {
   background: none !important;
   border: none !important;
@@ -244,4 +256,46 @@ body {
 
 body.map-fullscreen-active {
   overflow: hidden;
+}
+
+@media (max-width: 1023px) {
+  .app-shell {
+    min-height: 100svh;
+  }
+
+  .panel {
+    border-radius: 24px;
+    box-shadow: 0 22px 50px rgb(15 23 42 / 0.1);
+  }
+
+  .panel-section {
+    border-radius: 20px;
+    padding: 14px;
+  }
+
+  .map-card {
+    border-radius: 28px;
+    box-shadow: 0 26px 60px rgb(15 23 42 / 0.14);
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .app-shell::before {
+    background-size: 24px 24px;
+  }
+
+  .leaflet-control-zoom,
+  .leaflet-control-layers {
+    margin-top: 14px !important;
+    margin-right: 14px !important;
+  }
+
+  .leaflet-bottom.leaflet-right {
+    bottom: 14px;
+    right: 10px;
+  }
 }
