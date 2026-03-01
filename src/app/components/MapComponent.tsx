@@ -51,16 +51,14 @@ const formatDistance = (distanceMeters?: number) => {
 
 const formatDuration = (minutes?: number) => {
   if (!Number.isFinite(minutes)) return 'N/A';
-  const total = Math.max(0, Math.round(minutes as number));
+  const safeMinutes = Math.max(0, minutes as number);
+  if (safeMinutes < 1) return '<1 min';
+  if (safeMinutes < 10) return `${safeMinutes.toFixed(1)} min`;
+  const total = Math.round(safeMinutes);
   if (total < 60) return `${total} min`;
   const hours = Math.floor(total / 60);
   const mins = total % 60;
   return `${hours}h ${mins.toString().padStart(2, '0')}m`;
-};
-
-const estimateMinutes = (distanceMeters?: number, speedKmh = 5) => {
-  if (!Number.isFinite(distanceMeters)) return 0;
-  return ((distanceMeters as number) / 1000 / speedKmh) * 60;
 };
 
 const formatWebsite = (website?: string) => {
@@ -241,11 +239,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
       {amenityMarkers.map((marker, idx) => {
         const routeInfo = marker.id !== undefined ? routeByAmenityId.get(marker.id) : undefined;
-        const distance = routeInfo?.distance ?? marker.distance;
-        const walkingMinutes = routeInfo?.duration
-          ? routeInfo.duration / 60
-          : estimateMinutes(distance, 5);
-        const drivingMinutes = estimateMinutes(distance, 40);
+        const walkingDistance = routeInfo?.distance ?? marker.distance;
+        const walkingMinutes = Number.isFinite(routeInfo?.duration) ? routeInfo.duration / 60 : undefined;
+        const drivingDistance = routeInfo?.drivingDistance;
+        const drivingMinutes = Number.isFinite(routeInfo?.drivingDuration)
+          ? routeInfo.drivingDuration / 60
+          : undefined;
         const address =
           marker.tags?.['addr:full'] ||
           [marker.tags?.['addr:housenumber'], marker.tags?.['addr:street']]
@@ -269,7 +268,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 {marker.number || idx + 1}. {marker.name}
               </div>
               <div className="text-[10px] text-slate-600">
-                {formatDistance(distance)} | {formatDuration(walkingMinutes)} walk
+                {formatDistance(walkingDistance)} walk
+                {Number.isFinite(walkingMinutes) ? ` | ${formatDuration(walkingMinutes)} walk` : ''}
               </div>
             </Tooltip>
             <Popup className="custom-popup">
@@ -279,11 +279,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
                 </div>
                 {address && <div className="mt-1 text-xs text-slate-500">{address}</div>}
                 <div className="mt-2 space-y-1 text-xs text-slate-600">
-                  <div>Distance: {formatDistance(distance)}</div>
-                  <div>Walk: {formatDuration(walkingMinutes)}</div>
-                  <div>Drive: {formatDuration(drivingMinutes)}</div>
-                  {routeInfo?.isEstimate && (
-                    <div className="text-amber-600">Estimated route</div>
+                  <div>Walk distance: {formatDistance(walkingDistance)}</div>
+                  <div>Walk time: {formatDuration(walkingMinutes)}</div>
+                  <div>Drive distance: {formatDistance(drivingDistance)}</div>
+                  <div>Drive time: {formatDuration(drivingMinutes)}</div>
+                  {(routeInfo?.isEstimate || routeInfo?.drivingIsEstimate) && (
+                    <div className="text-amber-600">Estimated route metrics</div>
                   )}
                 </div>
                 {marker.tags && (
@@ -320,8 +321,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
       })}
 
       {routes.map((route, idx) => {
-        if (!route.coordinates) return null;
-        const drivingMinutes = estimateMinutes(route.distance, 40);
+        if (!Array.isArray(route.coordinates) || route.coordinates.length < 2) return null;
+        const drivingMinutes = Number.isFinite(route.drivingDuration) ? route.drivingDuration / 60 : undefined;
         return (
           <Polyline
             key={idx}
@@ -330,9 +331,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
           >
             <Popup>
               <div className="text-sm text-slate-700">
-                <div className="font-semibold">Distance: {formatDistance(route.distance)}</div>
-                <div>Walk: {formatDuration(route.duration / 60)}</div>
-                <div>Drive: {formatDuration(drivingMinutes)}</div>
+                <div className="font-semibold">Walk distance: {formatDistance(route.distance)}</div>
+                <div>Walk time: {formatDuration(route.duration / 60)}</div>
+                <div>Drive distance: {formatDistance(route.drivingDistance)}</div>
+                <div>Drive time: {formatDuration(drivingMinutes)}</div>
               </div>
             </Popup>
           </Polyline>

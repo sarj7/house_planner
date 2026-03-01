@@ -125,7 +125,10 @@ const formatDistance = (distanceMeters: number) => {
 
 const formatDuration = (minutes: number) => {
   if (!Number.isFinite(minutes)) return 'N/A';
-  const total = Math.max(0, Math.round(minutes));
+  const safeMinutes = Math.max(0, minutes);
+  if (safeMinutes < 1) return '<1 min';
+  if (safeMinutes < 10) return `${safeMinutes.toFixed(1)} min`;
+  const total = Math.round(safeMinutes);
   if (total < 60) return `${total} min`;
   const hours = Math.floor(total / 60);
   const mins = total % 60;
@@ -135,6 +138,13 @@ const formatDuration = (minutes: number) => {
 const getWalkingMinutes = (route: any) => {
   if (Number.isFinite(route?.duration)) return route.duration / 60;
   if (Number.isFinite(route?.distance)) return calculateTime(route.distance / 1000, 'walking');
+  return 0;
+};
+
+const getDrivingMinutes = (route: any) => {
+  if (Number.isFinite(route?.drivingDuration)) return route.drivingDuration / 60;
+  if (Number.isFinite(route?.drivingDistance)) return calculateTime(route.drivingDistance / 1000, 'driving');
+  if (Number.isFinite(route?.distance)) return calculateTime(route.distance / 1000, 'driving');
   return 0;
 };
 
@@ -248,7 +258,7 @@ interface AmenitiesListProps {
 
 const AmenitiesList: React.FC<AmenitiesListProps> = ({ routes }) => {
   if (!routes?.length) return null;
-  const hasEstimates = routes.some((route) => route.isEstimate);
+  const hasEstimates = routes.some((route) => route.isEstimate || route.drivingIsEstimate);
 
   return (
     <div className="mt-6 space-y-4 reveal reveal-delay-4">
@@ -274,7 +284,7 @@ const AmenitiesList: React.FC<AmenitiesListProps> = ({ routes }) => {
             <div className="mt-3 space-y-3">
               {amenityRoutes.map((route, idx) => {
                 const walkingMinutes = getWalkingMinutes(route);
-                const drivingMinutes = calculateTime(route.distance / 1000, 'driving');
+                const drivingMinutes = getDrivingMinutes(route);
                 const address = formatAmenityAddress(route.destination?.tags);
 
                 return (
@@ -289,9 +299,16 @@ const AmenitiesList: React.FC<AmenitiesListProps> = ({ routes }) => {
                       <div className="text-xs text-slate-500">{formatDistance(route.distance)}</div>
                     </div>
                     {address && <div className="mt-1 text-xs text-slate-500">{address}</div>}
-                    <div className="mt-2 text-xs text-slate-600">
-                      Walk {formatDuration(walkingMinutes)} | Drive {formatDuration(drivingMinutes)}
-                      {route.isEstimate && <span className="ml-2 text-amber-600">Estimated</span>}
+                    <div className="mt-2 space-y-1 text-xs text-slate-600">
+                      <div>
+                        Walk {formatDistance(route.distance)} • {formatDuration(walkingMinutes)}
+                      </div>
+                      <div>
+                        Drive {formatDistance(route.drivingDistance)} • {formatDuration(drivingMinutes)}
+                      </div>
+                      {(route.isEstimate || route.drivingIsEstimate) && (
+                        <div className="text-amber-600">Estimated route metrics</div>
+                      )}
                     </div>
                   </div>
                 );
@@ -883,7 +900,7 @@ const HousePlanner: React.FC = () => {
       <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:flex-row lg:gap-6 lg:px-6 lg:py-6">
         <aside
           className={clsx(
-            'panel order-2 flex flex-col gap-4 overflow-visible p-4 sm:gap-5 sm:p-5 lg:order-1 lg:w-[400px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
+            'panel order-2 flex flex-col gap-4 overflow-visible p-4 pb-24 sm:gap-5 sm:p-5 sm:pb-24 lg:order-1 lg:w-[400px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
             {
               hidden: isMapFullscreen,
             }
@@ -990,7 +1007,8 @@ const HousePlanner: React.FC = () => {
           </section>
 
           {selectedLocation && (
-            <section className="panel-section space-y-3 reveal reveal-delay-4">
+            <section className="sticky bottom-0 z-20 -mx-4 mt-2 border-t border-slate-200/70 bg-[rgba(255,249,242,0.96)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:-mx-5 sm:px-5 lg:static lg:mx-0 lg:mt-0 lg:border-t-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none">
+              <div className="panel-section space-y-3 reveal reveal-delay-4">
               <div className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   3. Search
@@ -1010,6 +1028,7 @@ const HousePlanner: React.FC = () => {
               {!hasSelectedAmenities && (
                 <p className="text-xs text-slate-500">Select one or more amenity types to continue.</p>
               )}
+              </div>
             </section>
           )}
 

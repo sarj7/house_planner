@@ -4,6 +4,22 @@
 
 export type TravelMode = 'walking' | 'driving';
 
+export interface RouteSummary {
+  distance: number;
+  duration: number;
+  isEstimate: boolean;
+}
+
+export interface AmenityRoute {
+  coordinates: [number, number][];
+  distance: number;
+  duration: number;
+  drivingDistance: number;
+  drivingDuration: number;
+  isEstimate: boolean;
+  drivingIsEstimate: boolean;
+}
+
 const AVERAGE_SPEEDS_KMH: Record<TravelMode, number> = {
   walking: 5,
   driving: 40,
@@ -42,12 +58,7 @@ export const calculateTime = (distanceKm: number, mode: TravelMode): number => {
 export const getRoute = async (
   start: [number, number],
   end: [number, number]
-): Promise<{
-  coordinates: [number, number][];
-  distance: number;
-  duration: number;
-  isEstimate: boolean;
-}> => {
+): Promise<AmenityRoute> => {
   try {
     const response = await fetch('/api/route', {
       method: 'POST',
@@ -60,12 +71,21 @@ export const getRoute = async (
     if (response.ok) {
       const data = await response.json();
 
-      if (Array.isArray(data?.coordinates) && Number.isFinite(data?.distance) && Number.isFinite(data?.duration)) {
+      if (
+        Array.isArray(data?.coordinates) &&
+        Number.isFinite(data?.distance) &&
+        Number.isFinite(data?.duration) &&
+        Number.isFinite(data?.drivingDistance) &&
+        Number.isFinite(data?.drivingDuration)
+      ) {
         return {
           coordinates: data.coordinates,
           distance: data.distance,
           duration: data.duration,
+          drivingDistance: data.drivingDistance,
+          drivingDuration: data.drivingDuration,
           isEstimate: Boolean(data.isEstimate),
+          drivingIsEstimate: Boolean(data.drivingIsEstimate),
         };
       }
     }
@@ -74,7 +94,7 @@ export const getRoute = async (
   } catch (error) {
     console.error('Error fetching route:', error);
 
-    // Fall back to direct line if routing fails
+    // Keep estimated metrics, but do not fabricate a straight-line geometry.
     const directDistance = calculateDirectDistance(
       start[0], start[1], end[0], end[1]
     );
@@ -82,10 +102,13 @@ export const getRoute = async (
     const durationInSeconds = calculateTime(directDistance / 1000, 'walking') * 60;
 
     return {
-      coordinates: [[start[1], start[0]], [end[1], end[0]]],
+      coordinates: [],
       distance: directDistance,
       duration: durationInSeconds,
+      drivingDistance: directDistance,
+      drivingDuration: calculateTime(directDistance / 1000, 'driving') * 60,
       isEstimate: true,
+      drivingIsEstimate: true,
     };
   }
 };

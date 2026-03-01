@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const OPENROUTE_API_URL = 'https://api.openrouteservice.org/v2/directions/foot-walking/geojson';
-const OSRM_API_URL = 'https://router.project-osrm.org/route/v1/foot';
-const OPENROUTE_API_KEY =
-  process.env.OPENROUTE_API_KEY ?? process.env.NEXT_PUBLIC_OPENROUTE_API_KEY ?? '';
+type TravelMode = 'walking' | 'driving';
 
 interface RouteResult {
   coordinates: [number, number][];
@@ -11,6 +8,20 @@ interface RouteResult {
   duration: number;
   isEstimate: boolean;
 }
+
+const OPENROUTE_URLS: Record<TravelMode, string> = {
+  walking: 'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
+  driving: 'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
+};
+
+const OSRM_PROFILES: Record<TravelMode, string> = {
+  walking: 'foot',
+  driving: 'driving',
+};
+
+const OSRM_API_BASE_URL = 'https://router.project-osrm.org/route/v1';
+const OPENROUTE_API_KEY =
+  process.env.OPENROUTE_API_KEY ?? process.env.NEXT_PUBLIC_OPENROUTE_API_KEY ?? '';
 
 const isCoordinatePair = (value: unknown): value is [number, number] => {
   return (
@@ -23,10 +34,14 @@ const isCoordinatePair = (value: unknown): value is [number, number] => {
   );
 };
 
-const getOpenRouteRoute = async (start: [number, number], end: [number, number]): Promise<RouteResult | null> => {
+const getOpenRouteRoute = async (
+  start: [number, number],
+  end: [number, number],
+  mode: TravelMode
+): Promise<RouteResult | null> => {
   if (!OPENROUTE_API_KEY) return null;
 
-  const response = await fetch(OPENROUTE_API_URL, {
+  const response = await fetch(OPENROUTE_URLS[mode], {
     method: 'POST',
     headers: {
       Authorization: OPENROUTE_API_KEY,
@@ -43,7 +58,7 @@ const getOpenRouteRoute = async (start: [number, number], end: [number, number])
   });
 
   if (!response.ok) {
-    throw new Error(`OpenRoute request failed: ${response.status}`);
+    throw new Error(`OpenRoute ${mode} request failed: ${response.status}`);
   }
 
   const data = await response.json();
@@ -52,7 +67,7 @@ const getOpenRouteRoute = async (start: [number, number], end: [number, number])
   const coordinates = feature?.geometry?.coordinates;
 
   if (!feature || !summary || !Array.isArray(coordinates)) {
-    throw new Error('OpenRoute response was missing route data.');
+    throw new Error(`OpenRoute ${mode} response was missing route data.`);
   }
 
   return {
@@ -63,20 +78,25 @@ const getOpenRouteRoute = async (start: [number, number], end: [number, number])
   };
 };
 
-const getOsrmRoute = async (start: [number, number], end: [number, number]): Promise<RouteResult> => {
+const getOsrmRoute = async (
+  start: [number, number],
+  end: [number, number],
+  mode: TravelMode
+): Promise<RouteResult> => {
   const params = new URLSearchParams({
     alternatives: 'false',
     overview: 'full',
     geometries: 'geojson',
     steps: 'false',
   });
+  const profile = OSRM_PROFILES[mode];
   const response = await fetch(
-    `${OSRM_API_URL}/${start[1]},${start[0]};${end[1]},${end[0]}?${params.toString()}`,
+    `${OSRM_API_BASE_URL}/${profile}/${start[1]},${start[0]};${end[1]},${end[0]}?${params.toString()}`,
     { cache: 'no-store' }
   );
 
   if (!response.ok) {
-    throw new Error(`OSRM request failed: ${response.status}`);
+    throw new Error(`OSRM ${mode} request failed: ${response.status}`);
   }
 
   const data = await response.json();
@@ -84,7 +104,7 @@ const getOsrmRoute = async (start: [number, number], end: [number, number]): Pro
   const coordinates = route?.geometry?.coordinates;
 
   if (!route || !Array.isArray(coordinates)) {
-    throw new Error('OSRM response was missing route data.');
+    throw new Error(`OSRM ${mode} response was missing route data.`);
   }
 
   return {
@@ -93,6 +113,24 @@ const getOsrmRoute = async (start: [number, number], end: [number, number]): Pro
     duration: Number(route.duration) || 0,
     isEstimate: false,
   };
+};
+
+const getRouteForMode = async (
+  start: [number, number],
+  end: [number, number],
+  mode: TravelMode
+): Promise<RouteResult> => {
+  try {
+    const openRouteResult = await getOpenRouteRoute(start, end, mode);
+    if (openRouteResult) return openRouteResult;
+  } catch (error) {
+    console.warn(
+      `OpenRoute ${mode} routing failed, falling back to OSRM.`,
+      error instanceof Error ? error.message : error
+    );
+  }
+
+  return getOsrmRoute(start, end, mode);
 };
 
 export async function POST(request: NextRequest) {
@@ -109,20 +147,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    try {
-      const openRouteResult = await getOpenRouteRoute(start, end);
-      if (openRouteResult) {
-        return NextResponse.json(openRouteResult);
-      }
-    } catch (error) {
-      console.warn(
-        'OpenRoute routing failed, falling back to OSRM.',
-        error instanceof Error ? error.message : error
-      );
-    }
+    const [walkingRoute, drivingRoute] = await Promise.all([
+      getRouteForMode(start, end, 'walking'),
+      getRouteForMode(start, end, 'driving'),
+    ]);
 
-    const osrmResult = await getOsrmRoute(start, end);
-    return NextResponse.json(osrmResult);
+    return NextResponse.json({
+      coordinates: walkingRoute.coordinates,
+      distance: walkingRoute.distance,
+      duration: walkingRoute.duration,
+      drivingDistance: drivingRoute.distance,
+      drivingDuration: drivingRoute.duration,
+      isEstimate: walkingRoute.isEstimate,
+      drivingIsEstimate: drivingRoute.isEstimate,
+    });
   } catch (error) {
     return NextResponse.json(
       {
