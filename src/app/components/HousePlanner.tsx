@@ -6,7 +6,12 @@ import { Search, RotateCcw, Maximize2, Minimize2, LocateFixed } from 'lucide-rea
 import clsx from 'clsx';
 
 import { useGeolocation } from '../hooks/useGeolocation';
-import { getRoute, calculateDirectDistance, calculateTime } from '../utils/routingService';
+import {
+  getRoute,
+  calculateDirectDistance,
+  calculateTime,
+  calculateWalkingMinutesFromDistance,
+} from '../utils/routingService';
 import AmenityControls from './AmenityControls';
 import { Logo } from './Logo';
 import { Place } from '../types';
@@ -17,8 +22,12 @@ const POSITIONSTACK_API = 'https://api.positionstack.com/v1';
 const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
 const POSITIONSTACK_ACCESS_KEY = process.env.NEXT_PUBLIC_POSITIONSTACK_ACCESS_KEY ?? '';
 
+const MIN_SEARCH_RADIUS = 500;
+const MAX_SEARCH_RADIUS = 50000;
+const SEARCH_RADIUS_STEP = 500;
 const DEFAULT_RADIUS = 2000;
 const DEFAULT_NUM_AMENITIES = 5;
+const MAX_NUM_AMENITIES = 100;
 const ROUTE_REQUEST_DELAY = 120;
 const DEFAULT_LEFT_PANEL_WIDTH = 410;
 const MIN_LEFT_PANEL_WIDTH = 320;
@@ -102,6 +111,20 @@ interface SearchResolution {
   coordinates: [number, number];
 }
 
+interface AmenitySearchStats {
+  type: string;
+  requested: number;
+  raw: number;
+  withCoordinates: number;
+  withinRadius: number;
+  final: number;
+}
+
+interface AmenitySearchResult {
+  amenities: any[];
+  stats: AmenitySearchStats;
+}
+
 const formatAddress = (item: any) => {
   if (!item) return '';
   const addr = item.address || {};
@@ -135,6 +158,11 @@ const formatDistance = (distanceMeters: number) => {
   return `${km.toFixed(1)} km`;
 };
 
+const formatRadius = (radiusMeters: number) => {
+  const km = radiusMeters / 1000;
+  return Number.isInteger(km) ? `${km} km` : `${km.toFixed(1)} km`;
+};
+
 const formatDuration = (minutes: number) => {
   if (!Number.isFinite(minutes)) return 'N/A';
   const safeMinutes = Math.max(0, minutes);
@@ -147,9 +175,31 @@ const formatDuration = (minutes: number) => {
   return `${hours}h ${mins.toString().padStart(2, '0')}m`;
 };
 
+const createEmptyAmenityStats = (type: string, requested: number): AmenitySearchStats => ({
+  type,
+  requested,
+  raw: 0,
+  withCoordinates: 0,
+  withinRadius: 0,
+  final: 0,
+});
+
+const logAmenitySearchStats = (stats: AmenitySearchStats[]) => {
+  if (process.env.NODE_ENV !== 'development' || !stats.length) return;
+  console.table(
+    stats.map((item) => ({
+      type: item.type,
+      requested: item.requested,
+      rawApiResults: item.raw,
+      afterCoordinateFilter: item.withCoordinates,
+      afterRadiusFilter: item.withinRadius,
+      finalDisplayed: item.final,
+    }))
+  );
+};
+
 const getWalkingMinutes = (route: any) => {
-  if (Number.isFinite(route?.duration)) return route.duration / 60;
-  if (Number.isFinite(route?.distance)) return calculateTime(route.distance / 1000, 'walking');
+  if (Number.isFinite(route?.distance)) return calculateWalkingMinutesFromDistance(route.distance);
   return 0;
 };
 
@@ -351,6 +401,7 @@ const HousePlanner: React.FC = () => {
   const [isLoadingAmenities, setIsLoadingAmenities] = useState(false);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [amenitiesError, setAmenitiesError] = useState<string | null>(null);
+  const [amenitySearchStats, setAmenitySearchStats] = useState<AmenitySearchStats[]>([]);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [radius, setRadius] = useState(DEFAULT_RADIUS);
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
@@ -458,6 +509,7 @@ const HousePlanner: React.FC = () => {
     setAmenityMarkers([]);
     setRoutes([]);
     setAmenitiesError(null);
+    setAmenitySearchStats([]);
     setConfirmedSearchAddress('');
   }, []);
 
@@ -769,12 +821,13 @@ const HousePlanner: React.FC = () => {
   }, [applyResolvedLocation, handlePositionstackFailure, searchAddress, searchPlaces, searchPositionstackSingle]);
 
   const fetchNearbyAmenities = useCallback(
-    async (lat: number, lon: number, amenityType: string) => {
+    async (lat: number, lon: number, amenityType: string): Promise<AmenitySearchResult> => {
       const queryTag = amenityTags[amenityType];
-      const baseRadius = Math.max(radius, 500);
-      const radii = [baseRadius, Math.min(baseRadius * 2, 50000), Math.min(baseRadius * 4, 50000)];
+      const searchRadius = clamp(radius, MIN_SEARCH_RADIUS, MAX_SEARCH_RADIUS);
+      const requestedCount = clamp(numAmenities, 1, MAX_NUM_AMENITIES);
+      const emptyStats = createEmptyAmenityStats(amenityType, requestedCount);
 
-      const fetchData = async (searchRadius: number) => {
+      const fetchData = async () => {
         const query = `
           [out:json][timeout:25];
           (
@@ -803,41 +856,55 @@ const HousePlanner: React.FC = () => {
       };
 
       try {
-        let data: any = null;
-        for (const searchRadius of radii) {
-          data = await fetchData(searchRadius);
-          if (data?.elements?.length >= numAmenities) break;
+        const data = await fetchData();
+        const elements = Array.isArray(data?.elements) ? data.elements : [];
+
+        if (!elements.length) {
+          return { amenities: [], stats: emptyStats };
         }
 
-        if (!data?.elements?.length) return [];
+        const mappedAmenities = elements.map((element: any) => {
+          const elemLat = Number(element.lat ?? element.center?.lat);
+          const elemLon = Number(element.lon ?? element.center?.lon);
 
-        return data.elements
-          .map((element: any) => {
-            const elemLat = element.lat || element.center?.lat;
-            const elemLon = element.lon || element.center?.lon;
+          if (!Number.isFinite(elemLat) || !Number.isFinite(elemLon) || !element.tags) return null;
 
-            if (!elemLat || !elemLon || !element.tags) return null;
+          const name =
+            element.tags.name ||
+            element.tags.brand ||
+            element.tags.operator ||
+            `${amenityType} (No name)`;
 
-            const name =
-              element.tags.name ||
-              element.tags.brand ||
-              element.tags.operator ||
-              `${amenityType} (No name)`;
+          return {
+            sourceId: `${element.type}-${element.id}`,
+            position: [elemLat, elemLon],
+            name,
+            tags: element.tags,
+            distance: calculateDirectDistance(lat, lon, elemLat, elemLon),
+            type: amenityType,
+          };
+        });
 
-            return {
-              position: [elemLat, elemLon],
-              name,
-              tags: element.tags,
-              distance: calculateDirectDistance(lat, lon, elemLat, elemLon),
-              type: amenityType,
-            };
-          })
-          .filter(Boolean)
+        const withCoordinates = mappedAmenities.filter(Boolean) as any[];
+        const withinRadius = withCoordinates.filter((amenity) => amenity.distance <= searchRadius);
+        const finalAmenities = withinRadius
           .sort((a: any, b: any) => a.distance - b.distance)
-          .slice(0, numAmenities);
+          .slice(0, requestedCount);
+
+        return {
+          amenities: finalAmenities,
+          stats: {
+            type: amenityType,
+            requested: requestedCount,
+            raw: elements.length,
+            withCoordinates: withCoordinates.length,
+            withinRadius: withinRadius.length,
+            final: finalAmenities.length,
+          },
+        };
       } catch (error) {
         setAmenitiesError((error as Error).message);
-        return [];
+        return { amenities: [], stats: emptyStats };
       }
     },
     [numAmenities, radius]
@@ -853,6 +920,7 @@ const HousePlanner: React.FC = () => {
     setAmenityMarkers([]);
     setRoutes([]);
     setAmenitiesError(null);
+    setAmenitySearchStats([]);
 
     if (!activeTypes.length) {
       setIsLoadingAmenities(false);
@@ -866,9 +934,13 @@ const HousePlanner: React.FC = () => {
 
       if (token !== searchTokenRef.current) return;
 
-      const markers = results.flatMap((amenities) => {
-        return amenities.map((amenity: any, index: number) => {
-          const id = `${amenity.type}-${amenity.position[0]}-${amenity.position[1]}-${index}`;
+      const stats = results.map((result) => result.stats);
+      setAmenitySearchStats(stats);
+      logAmenitySearchStats(stats);
+
+      const markers = results.flatMap((result) => {
+        return result.amenities.map((amenity: any, index: number) => {
+          const id = amenity.sourceId || `${amenity.type}-${amenity.position[0]}-${amenity.position[1]}-${index}`;
           return {
             ...amenity,
             id,
@@ -941,6 +1013,7 @@ const HousePlanner: React.FC = () => {
     setNumAmenities(DEFAULT_NUM_AMENITIES);
     setRadius(DEFAULT_RADIUS);
     setAmenitiesError(null);
+    setAmenitySearchStats([]);
     setSearchError(null);
     setIsLoadingAmenities(false);
   }, []);
@@ -1122,22 +1195,25 @@ const HousePlanner: React.FC = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <span>Radius</span>
-                <span className="text-slate-700">{(radius / 1000).toFixed(1)} km</span>
+                <span className="text-slate-700">{formatRadius(radius)}</span>
               </div>
               <input
                 type="range"
-                min="500"
-                max="5000"
-                step="100"
+                min={MIN_SEARCH_RADIUS}
+                max={MAX_SEARCH_RADIUS}
+                step={SEARCH_RADIUS_STEP}
                 value={radius}
                 onChange={(e) => setRadius(Number(e.target.value))}
                 className="w-full accent-amber-500"
+                aria-label="Search radius"
+                aria-valuetext={formatRadius(radius)}
               />
             </div>
 
             <AmenityControls
               numAmenities={numAmenities}
               setNumAmenities={setNumAmenities}
+              maxNumAmenities={MAX_NUM_AMENITIES}
               selectedAmenities={selectedAmenities}
               toggleAmenity={handleToggleAmenity}
               amenityColors={amenityColors}
@@ -1168,6 +1244,15 @@ const HousePlanner: React.FC = () => {
           {amenitiesError && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {amenitiesError}
+            </div>
+          )}
+
+          {amenitySearchStats.some((item) => item.final < item.requested) && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              {amenitySearchStats
+                .filter((item) => item.final < item.requested)
+                .map((item) => `${item.type}: showing ${item.final} of ${item.requested} requested`)
+                .join(' • ')}
             </div>
           )}
 

@@ -20,8 +20,10 @@ export interface AmenityRoute {
   drivingIsEstimate: boolean;
 }
 
+export const AVERAGE_WALKING_SPEED_KMH = 5;
+
 const AVERAGE_SPEEDS_KMH: Record<TravelMode, number> = {
-  walking: 5,
+  walking: AVERAGE_WALKING_SPEED_KMH,
   driving: 40,
 };
 
@@ -48,6 +50,11 @@ export const calculateTime = (distanceKm: number, mode: TravelMode): number => {
   if (!Number.isFinite(distanceKm) || distanceKm <= 0) return 0;
   const speed = AVERAGE_SPEEDS_KMH[mode] ?? AVERAGE_SPEEDS_KMH.walking;
   return (distanceKm / speed) * 60;
+};
+
+export const calculateWalkingMinutesFromDistance = (distanceMeters?: number): number => {
+  if (!Number.isFinite(distanceMeters) || (distanceMeters as number) <= 0) return 0;
+  return Math.round(((distanceMeters as number) / 1000 / AVERAGE_WALKING_SPEED_KMH) * 60);
 };
 
 // -------------------------
@@ -81,7 +88,7 @@ export const getRoute = async (
         return {
           coordinates: data.coordinates,
           distance: data.distance,
-          duration: data.duration,
+          duration: calculateWalkingMinutesFromDistance(data.distance) * 60,
           drivingDistance: data.drivingDistance,
           drivingDuration: data.drivingDuration,
           isEstimate: Boolean(data.isEstimate),
@@ -99,7 +106,7 @@ export const getRoute = async (
       start[0], start[1], end[0], end[1]
     );
 
-    const durationInSeconds = calculateTime(directDistance / 1000, 'walking') * 60;
+    const durationInSeconds = calculateWalkingMinutesFromDistance(directDistance) * 60;
 
     return {
       coordinates: [],

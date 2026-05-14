@@ -12,6 +12,7 @@ import {
 interface AmenityControlsProps {
   numAmenities: number;
   setNumAmenities: (num: number) => void;
+  maxNumAmenities: number;
   selectedAmenities: Record<string, boolean>;
   toggleAmenity: (type: string) => void;
   amenityColors: Record<string, string>;
@@ -28,6 +29,7 @@ const amenityIcons = {
 const AmenityControls: React.FC<AmenityControlsProps> = ({
   numAmenities,
   setNumAmenities,
+  maxNumAmenities,
   selectedAmenities,
   toggleAmenity,
   amenityColors,
@@ -40,11 +42,11 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
           <input
             type="number"
             min="1"
-            max="20"
+            max={maxNumAmenities}
             value={numAmenities}
             onChange={(e) => {
               const nextValue = Math.max(1, parseInt(e.target.value, 10) || 1);
-              setNumAmenities(Math.min(20, nextValue));
+              setNumAmenities(Math.min(maxNumAmenities, nextValue));
             }}
             className="h-10 w-16 rounded-xl border border-slate-200 bg-white px-2 py-1 text-center text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             data-testid="amenity-count-input"

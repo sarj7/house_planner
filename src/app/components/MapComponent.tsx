@@ -19,6 +19,10 @@ import {
   Circle,
 } from 'react-leaflet';
 import { Amenity, Location } from '../types';
+import {
+  AVERAGE_WALKING_SPEED_KMH,
+  calculateWalkingMinutesFromDistance,
+} from '../utils/routingService';
 
 // Fix for default icon path in Next.js
 if (typeof window !== 'undefined') {
@@ -65,6 +69,18 @@ const formatWebsite = (website?: string) => {
   if (!website || typeof website !== 'string') return '';
   if (website.startsWith('http://') || website.startsWith('https://')) return website;
   return `https://${website}`;
+};
+
+const formatAddress = (tags?: Record<string, any>) => {
+  if (!tags) return '';
+  if (tags['addr:full']) return tags['addr:full'];
+  const street = tags['addr:street'];
+  const houseNumber = tags['addr:housenumber'];
+  const line1 = houseNumber && street ? `${houseNumber} ${street}` : street;
+  const locality = tags['addr:city'] || tags['addr:town'] || tags['addr:village'];
+  const region = tags['addr:state'];
+  const postcode = tags['addr:postcode'];
+  return [line1, locality, region, postcode].filter(Boolean).join(', ');
 };
 
 const ChangeView = ({ center, zoom }: { center: [number, number]; zoom: number }) => {
@@ -116,6 +132,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
   }, [map, selectedLocation, amenityMarkers]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    console.info('[HousePlanner] markers rendered on map:', amenityMarkers.length);
+  }, [amenityMarkers.length]);
 
   const routeByAmenityId = useMemo(() => {
     const mapById = new Map<string | number, any>();
@@ -240,16 +261,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
       {amenityMarkers.map((marker, idx) => {
         const routeInfo = marker.id !== undefined ? routeByAmenityId.get(marker.id) : undefined;
         const walkingDistance = routeInfo?.distance ?? marker.distance;
-        const walkingMinutes = Number.isFinite(routeInfo?.duration) ? routeInfo.duration / 60 : undefined;
+        const walkingMinutes = calculateWalkingMinutesFromDistance(walkingDistance);
         const drivingDistance = routeInfo?.drivingDistance;
         const drivingMinutes = Number.isFinite(routeInfo?.drivingDuration)
           ? routeInfo.drivingDuration / 60
           : undefined;
-        const address =
-          marker.tags?.['addr:full'] ||
-          [marker.tags?.['addr:housenumber'], marker.tags?.['addr:street']]
-            .filter(Boolean)
-            .join(' ');
+        const address = formatAddress(marker.tags);
+        const openingHours = marker.tags?.opening_hours;
+        const phone = marker.tags?.phone || marker.tags?.['contact:phone'];
+        const website = marker.tags?.website || marker.tags?.['contact:website'];
 
         return (
           <Marker
@@ -273,47 +293,85 @@ const MapComponent: React.FC<MapComponentProps> = ({
               </div>
             </Tooltip>
             <Popup className="custom-popup">
-              <div className="p-3">
-                <div className="text-base font-semibold" style={{ color: marker.color }}>
-                  {marker.name}
+              <div className="w-[280px] overflow-hidden rounded-xl bg-white text-slate-800">
+                <div className="border-b border-slate-100 bg-slate-50/90 px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm"
+                      style={{ backgroundColor: marker.color || '#64748b' }}
+                    >
+                      {marker.number || idx + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        {marker.type || 'Amenity'}
+                      </div>
+                      <div className="mt-0.5 text-base font-semibold leading-5 text-slate-950">
+                        {marker.name}
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">
+                        {address || 'No address listed'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                {address && <div className="mt-1 text-xs text-slate-500">{address}</div>}
-                <div className="mt-2 space-y-1 text-xs text-slate-600">
-                  <div>Walk distance: {formatDistance(walkingDistance)}</div>
-                  <div>Walk time: {formatDuration(walkingMinutes)}</div>
-                  <div>Drive distance: {formatDistance(drivingDistance)}</div>
-                  <div>Drive time: {formatDuration(drivingMinutes)}</div>
+
+                <div className="space-y-3 px-4 py-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-slate-100 bg-white px-3 py-2 shadow-sm">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Walk
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-slate-950">
+                        {formatDuration(walkingMinutes)}
+                      </div>
+                      <div className="text-[11px] text-slate-500">{formatDistance(walkingDistance)}</div>
+                    </div>
+                    <div className="rounded-lg border border-slate-100 bg-white px-3 py-2 shadow-sm">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Drive
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-slate-950">
+                        {formatDuration(drivingMinutes)}
+                      </div>
+                      <div className="text-[11px] text-slate-500">{formatDistance(drivingDistance)}</div>
+                    </div>
+                  </div>
+
                   {(routeInfo?.isEstimate || routeInfo?.drivingIsEstimate) && (
-                    <div className="text-amber-600">Estimated route metrics</div>
+                    <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                      Some route metrics are estimated. Walking time uses {AVERAGE_WALKING_SPEED_KMH} km/h.
+                    </div>
                   )}
-                </div>
-                {marker.tags && (
-                  <div className="mt-3 space-y-1 text-xs text-slate-600">
-                    {marker.tags.opening_hours && (
-                      <div>
-                        <span className="font-semibold">Hours:</span> {marker.tags.opening_hours}
-                      </div>
-                    )}
-                    {marker.tags.phone && (
-                      <div>
-                        <span className="font-semibold">Phone:</span> {marker.tags.phone}
-                      </div>
-                    )}
-                    {marker.tags.website && (
-                      <div>
-                        <span className="font-semibold">Website:</span>{' '}
+
+                  {(openingHours || phone || website) && (
+                    <div className="space-y-2 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-600">
+                      {openingHours && (
+                        <div>
+                          <span className="font-semibold text-slate-800">Hours:</span> {openingHours}
+                        </div>
+                      )}
+                      {phone && (
+                        <div>
+                          <span className="font-semibold text-slate-800">Phone:</span> {phone}
+                        </div>
+                      )}
+                      {website && (
+                        <div>
+                          <span className="font-semibold text-slate-800">Website:</span>{' '}
                         <a
-                          href={formatWebsite(marker.tags.website)}
+                          href={formatWebsite(website)}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-amber-700 underline"
+                          className="font-semibold text-amber-700 underline decoration-amber-300 underline-offset-2"
                         >
-                          {marker.tags.website}
+                          Open website
                         </a>
                       </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </Popup>
           </Marker>
@@ -322,6 +380,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
       {routes.map((route, idx) => {
         if (!Array.isArray(route.coordinates) || route.coordinates.length < 2) return null;
+        const walkingMinutes = calculateWalkingMinutesFromDistance(route.distance);
         const drivingMinutes = Number.isFinite(route.drivingDuration) ? route.drivingDuration / 60 : undefined;
         return (
           <Polyline
@@ -332,7 +391,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
             <Popup>
               <div className="text-sm text-slate-700">
                 <div className="font-semibold">Walk distance: {formatDistance(route.distance)}</div>
-                <div>Walk time: {formatDuration(route.duration / 60)}</div>
+                <div>Walk time: {formatDuration(walkingMinutes)}</div>
                 <div>Drive distance: {formatDistance(route.drivingDistance)}</div>
                 <div>Drive time: {formatDuration(drivingMinutes)}</div>
               </div>
