@@ -109,6 +109,78 @@ body {
   background: linear-gradient(135deg, #f3ede3 0%, #f7f2e9 50%, #f2e9db 100%);
 }
 
+.amenity-button-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.75rem), 1fr));
+  gap: 0.5rem;
+}
+
+.panel-resize-handle {
+  position: relative;
+  touch-action: none;
+  user-select: none;
+}
+
+.panel-resize-track {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.panel-resize-track::before {
+  content: '';
+  width: 1px;
+  height: calc(100vh - 5rem);
+  max-height: 100%;
+  border-radius: 999px;
+  background: rgb(var(--ink) / 0.1);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease;
+}
+
+.panel-resize-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgb(var(--ink) / 0.18);
+  box-shadow: 0 0 0 6px rgb(255 255 255 / 0.52);
+  transform: translate(-50%, -50%);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.panel-resize-handle:hover .panel-resize-track::before,
+.panel-resize-handle:focus-visible .panel-resize-track::before,
+.panel-resize-handle-active .panel-resize-track::before {
+  width: 2px;
+  background: rgb(var(--accent) / 0.5);
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.1);
+}
+
+.panel-resize-handle:hover .panel-resize-grip,
+.panel-resize-handle:focus-visible .panel-resize-grip,
+.panel-resize-handle-active .panel-resize-grip {
+  background: rgb(var(--accent));
+  box-shadow: 0 0 0 8px rgb(var(--accent) / 0.12), 0 10px 24px rgb(15 23 42 / 0.14);
+  transform: translate(-50%, -50%) scaleY(1.08);
+}
+
+.panel-resize-handle:focus-visible .panel-resize-grip {
+  outline: 2px solid rgb(var(--accent-warm));
+  outline-offset: 4px;
+}
+
+body.panel-resize-active {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.panel-resize-active * {
+  cursor: col-resize !important;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, rgb(var(--accent)) 0%, #d58f4e 60%, #e1b15c 100%);
   color: #fff;

@@ -8,6 +8,7 @@ import clsx from 'clsx';
 import { useGeolocation } from '../hooks/useGeolocation';
 import { getRoute, calculateDirectDistance, calculateTime } from '../utils/routingService';
 import AmenityControls from './AmenityControls';
+import { Logo } from './Logo';
 import { Place } from '../types';
 import DynamicMap from './DynamicMap';
 
@@ -19,6 +20,12 @@ const POSITIONSTACK_ACCESS_KEY = process.env.NEXT_PUBLIC_POSITIONSTACK_ACCESS_KE
 const DEFAULT_RADIUS = 2000;
 const DEFAULT_NUM_AMENITIES = 5;
 const ROUTE_REQUEST_DELAY = 120;
+const DEFAULT_LEFT_PANEL_WIDTH = 410;
+const MIN_LEFT_PANEL_WIDTH = 320;
+const MAX_LEFT_PANEL_WIDTH = 560;
+const MIN_MAP_PANEL_WIDTH = 520;
+const RESIZE_HANDLE_WIDTH = 24;
+const PANEL_WIDTH_STORAGE_KEY = 'house-planner:left-panel-width';
 
 const amenityTags: Record<string, string> = {
   'EV-Chargers': 'amenity=charging_station',
@@ -40,6 +47,11 @@ const amenityOrder = Object.keys(amenityTags);
 
 const NOMINATIM_HEADERS = {
   Accept: 'application/json',
+};
+
+const clamp = (value: number, min: number, max: number) => {
+  if (max < min) return min;
+  return Math.min(max, Math.max(min, value));
 };
 
 const getPositionstackResults = (payload: any): any[] => {
@@ -347,9 +359,13 @@ const HousePlanner: React.FC = () => {
   );
   const [numAmenities, setNumAmenities] = useState(DEFAULT_NUM_AMENITIES);
   const [isClient, setIsClient] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(DEFAULT_LEFT_PANEL_WIDTH);
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
   const selectedAmenityCount = Object.values(selectedAmenities).filter(Boolean).length;
   const hasSelectedAmenities = selectedAmenityCount > 0;
 
+  const layoutRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTokenRef = useRef(0);
@@ -357,10 +373,59 @@ const HousePlanner: React.FC = () => {
   const predictionAbortRef = useRef<AbortController | null>(null);
   const predictionRequestRef = useRef(0);
   const positionstackEnabledRef = useRef(Boolean(POSITIONSTACK_ACCESS_KEY));
+  const isResizingPanelsRef = useRef(false);
+  const leftPanelWidthRef = useRef(DEFAULT_LEFT_PANEL_WIDTH);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  const getClampedPanelWidth = useCallback((nextWidth: number) => {
+    const containerWidth = layoutRef.current?.getBoundingClientRect().width ?? 0;
+    const maxByLayout = containerWidth
+      ? containerWidth - MIN_MAP_PANEL_WIDTH - RESIZE_HANDLE_WIDTH
+      : MAX_LEFT_PANEL_WIDTH;
+    return clamp(nextWidth, MIN_LEFT_PANEL_WIDTH, Math.min(MAX_LEFT_PANEL_WIDTH, maxByLayout));
+  }, []);
+
+  const invalidateMapSize = useCallback((delay = 0) => {
+    window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        mapRef.current?.invalidateSize();
+      });
+    }, delay);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const mediaQuery = window.matchMedia('(min-width: 1024px)');
+    const handleLayoutChange = () => {
+      setIsDesktopLayout(mediaQuery.matches);
+      if (mediaQuery.matches) {
+        setLeftPanelWidth((currentWidth) => getClampedPanelWidth(currentWidth));
+        invalidateMapSize(80);
+      }
+    };
+
+    const savedWidth = Number(window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY));
+    if (Number.isFinite(savedWidth)) {
+      setLeftPanelWidth(getClampedPanelWidth(savedWidth));
+    }
+
+    handleLayoutChange();
+    mediaQuery.addEventListener('change', handleLayoutChange);
+    window.addEventListener('resize', handleLayoutChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleLayoutChange);
+      window.removeEventListener('resize', handleLayoutChange);
+    };
+  }, [getClampedPanelWidth, invalidateMapSize, isClient]);
+
+  useEffect(() => {
+    leftPanelWidthRef.current = leftPanelWidth;
+  }, [leftPanelWidth]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -369,6 +434,21 @@ const HousePlanner: React.FC = () => {
       document.body.classList.remove('map-fullscreen-active');
     };
   }, [isClient, isMapFullscreen]);
+
+  useEffect(() => {
+    isResizingPanelsRef.current = isResizingPanels;
+
+    if (!isResizingPanels) {
+      document.body.classList.remove('panel-resize-active');
+      return;
+    }
+
+    document.body.classList.add('panel-resize-active');
+
+    return () => {
+      document.body.classList.remove('panel-resize-active');
+    };
+  }, [isResizingPanels]);
 
   const setLocationAndClear = useCallback((lat: number, lon: number) => {
     searchTokenRef.current += 1;
@@ -873,6 +953,68 @@ const HousePlanner: React.FC = () => {
     setIsMapFullscreen((prev) => !prev);
   }, []);
 
+  const updatePanelWidthFromPointer = useCallback(
+    (clientX: number) => {
+      if (!layoutRef.current) return;
+      const layoutRect = layoutRef.current.getBoundingClientRect();
+      const nextWidth = getClampedPanelWidth(clientX - layoutRect.left);
+
+      leftPanelWidthRef.current = nextWidth;
+      setLeftPanelWidth(nextWidth);
+      invalidateMapSize();
+    },
+    [getClampedPanelWidth, invalidateMapSize]
+  );
+
+  const handleResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!isDesktopLayout || isMapFullscreen) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setIsResizingPanels(true);
+      updatePanelWidthFromPointer(event.clientX);
+    },
+    [isDesktopLayout, isMapFullscreen, updatePanelWidthFromPointer]
+  );
+
+  const handleResizePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!isResizingPanelsRef.current) return;
+      event.preventDefault();
+      updatePanelWidthFromPointer(event.clientX);
+    },
+    [updatePanelWidthFromPointer]
+  );
+
+  const finishPanelResize = useCallback((event?: React.PointerEvent<HTMLButtonElement>) => {
+    if (!isResizingPanelsRef.current) return;
+    if (event?.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setIsResizingPanels(false);
+    window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(Math.round(leftPanelWidthRef.current)));
+    invalidateMapSize(120);
+  }, [invalidateMapSize]);
+
+  const handleResizeKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (!isDesktopLayout || isMapFullscreen) return;
+      const step = event.shiftKey ? 40 : 16;
+      const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!direction) return;
+
+      event.preventDefault();
+      setLeftPanelWidth((currentWidth) => {
+        const nextWidth = getClampedPanelWidth(currentWidth + direction * step);
+        leftPanelWidthRef.current = nextWidth;
+        window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(Math.round(nextWidth)));
+        return nextWidth;
+      });
+      invalidateMapSize();
+    },
+    [getClampedPanelWidth, invalidateMapSize, isDesktopLayout, isMapFullscreen]
+  );
+
   useEffect(() => {
     if (userLocation && !selectedLocation) {
       const [lat, lon] = userLocation;
@@ -882,38 +1024,40 @@ const HousePlanner: React.FC = () => {
   }, [reverseGeocode, selectedLocation, setLocationAndClear, userLocation]);
 
   useEffect(() => {
-    if (selectedLocation && Object.values(selectedAmenities).some(Boolean)) {
-      performAmenitySearch();
-    }
-  }, [performAmenitySearch, radius, selectedAmenities, selectedLocation]);
-
-  useEffect(() => {
     if (!mapRef.current) return;
-    const timeout = setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 150);
-    return () => clearTimeout(timeout);
-  }, [isMapFullscreen]);
+    invalidateMapSize(150);
+  }, [invalidateMapSize, isMapFullscreen]);
 
   return (
     <div className="app-shell">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:flex-row lg:gap-6 lg:px-6 lg:py-6">
+      <div
+        ref={layoutRef}
+        className="flex min-h-screen w-full flex-col gap-4 p-4 sm:gap-5 sm:p-5 lg:flex-row lg:gap-0 lg:p-5 xl:p-6"
+      >
         <aside
           className={clsx(
-            'panel order-2 flex flex-col gap-4 overflow-visible p-4 pb-24 sm:gap-5 sm:p-5 sm:pb-24 lg:order-1 lg:w-[400px] lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:p-6',
+            'panel order-2 flex w-full flex-col gap-4 overflow-visible p-4 pb-24 sm:gap-5 sm:p-5 sm:pb-24 lg:order-1 lg:max-h-[calc(100vh-2.5rem)] lg:shrink-0 lg:overflow-y-auto lg:p-5 xl:max-h-[calc(100vh-3rem)] xl:p-6',
             {
               hidden: isMapFullscreen,
             }
           )}
+          style={isDesktopLayout && !isMapFullscreen ? { width: leftPanelWidth } : undefined}
         >
-          <header className="space-y-2 reveal reveal-delay-1">
-            <div className="text-[10px] uppercase tracking-[0.32em] text-slate-500 sm:text-[11px]">
-              House Planner
+          <header className="reveal reveal-delay-1">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+                <Logo className="h-12 w-12" />
+              </div>
+              <div>
+                <div className="font-display text-3xl font-semibold leading-none tracking-tight text-slate-950 sm:text-4xl">
+                  House Planner
+                </div>
+                <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c6673c]">
+                  Neighborhood fit
+                </div>
+              </div>
             </div>
-            <h1 className="font-display text-3xl leading-none text-slate-900 sm:text-4xl">
-              Plan your area
-            </h1>
-            <p className="max-w-md text-sm leading-6 text-slate-600">
+            <p className="mt-4 max-w-md text-sm leading-6 text-slate-600">
               Pick a home location, choose the amenities you care about, then compare nearby options.
             </p>
           </header>
@@ -924,7 +1068,7 @@ const HousePlanner: React.FC = () => {
                 1. Choose a location
               </div>
               <p className="text-xs leading-5 text-slate-500">
-                Search for an address, use your current location, or tap the map.
+                Search, locate, or tap the map.
               </p>
             </div>
             {selectedLocation && (
@@ -973,12 +1117,9 @@ const HousePlanner: React.FC = () => {
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                 2. Choose what to compare
               </div>
-              <p className="text-xs leading-5 text-slate-500">
-                Set the search radius and select the amenities you want to see.
-              </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 <span>Radius</span>
                 <span className="text-slate-700">{(radius / 1000).toFixed(1)} km</span>
@@ -992,9 +1133,6 @@ const HousePlanner: React.FC = () => {
                 onChange={(e) => setRadius(Number(e.target.value))}
                 className="w-full accent-amber-500"
               />
-              <p className="text-xs leading-5 text-slate-500">
-                Smaller radius shows closer options. Larger radius shows more choices.
-              </p>
             </div>
 
             <AmenityControls
@@ -1006,31 +1144,26 @@ const HousePlanner: React.FC = () => {
             />
           </section>
 
-          {selectedLocation && (
-            <section className="sticky bottom-0 z-20 -mx-4 mt-2 border-t border-slate-200/70 bg-[rgba(255,249,242,0.96)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:-mx-5 sm:px-5 lg:static lg:mx-0 lg:mt-0 lg:border-t-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none">
-              <div className="panel-section space-y-3 reveal reveal-delay-4">
+          <section className="sticky bottom-0 z-20 -mx-4 mt-2 border-t border-slate-200/70 bg-[rgba(255,249,242,0.96)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:-mx-5 sm:px-5 lg:static lg:mx-0 lg:mt-0 lg:border-t-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:backdrop-blur-none">
+            <div className="panel-section space-y-3 reveal reveal-delay-4">
               <div className="space-y-1">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   3. Search
                 </div>
                 <p className="text-xs leading-5 text-slate-500">
-                  Choose at least one amenity, then search nearby places.
+                  Run the search when your location and amenities are set.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={performAmenitySearch}
-                disabled={isLoadingAmenities || !hasSelectedAmenities}
+                disabled={isLoadingAmenities || !selectedLocation || !hasSelectedAmenities}
                 className="btn-primary w-full"
               >
                 {isLoadingAmenities ? 'Searching amenities...' : 'Find nearby amenities'}
               </button>
-              {!hasSelectedAmenities && (
-                <p className="text-xs text-slate-500">Select one or more amenity types to continue.</p>
-              )}
-              </div>
-            </section>
-          )}
+            </div>
+          </section>
 
           {amenitiesError && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -1047,7 +1180,35 @@ const HousePlanner: React.FC = () => {
           <AmenitiesList routes={routes} />
         </aside>
 
-        <section className="relative order-1 flex-1 lg:order-2">
+        <button
+          type="button"
+          aria-label="Resize controls and map panels"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_LEFT_PANEL_WIDTH}
+          aria-valuemax={MAX_LEFT_PANEL_WIDTH}
+          aria-valuenow={Math.round(leftPanelWidth)}
+          className={clsx(
+            'panel-resize-handle order-2 hidden w-5 shrink-0 cursor-col-resize items-stretch justify-center outline-none xl:w-6',
+            'lg:flex',
+            {
+              'panel-resize-handle-active': isResizingPanels,
+              '!hidden': isMapFullscreen,
+            }
+          )}
+          role="separator"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={finishPanelResize}
+          onPointerCancel={finishPanelResize}
+          onLostPointerCapture={finishPanelResize}
+          onKeyDown={handleResizeKeyDown}
+        >
+          <span className="panel-resize-track" aria-hidden="true">
+            <span className="panel-resize-grip" />
+          </span>
+        </button>
+
+        <section className="relative order-1 flex-1 lg:order-3 lg:min-w-0">
           <div className="mb-3 flex items-center justify-between gap-3 px-1 lg:hidden">
             <div>
               <div className="text-[10px] uppercase tracking-[0.28em] text-slate-500">Map Preview</div>
@@ -1063,7 +1224,7 @@ const HousePlanner: React.FC = () => {
             className={clsx(
               'relative overflow-hidden lg:rounded-[2.25rem]',
               {
-                'map-card map-stage h-[52svh] min-h-[360px] sm:h-[58svh] lg:h-[calc(100vh-3rem)]': !isMapFullscreen,
+                'map-card map-stage h-[52svh] min-h-[360px] sm:h-[58svh] lg:h-[calc(100vh-2.5rem)] xl:h-[calc(100vh-3rem)]': !isMapFullscreen,
                 'map-card-fullscreen fixed inset-0 z-50 h-screen w-screen': isMapFullscreen,
               }
             )}

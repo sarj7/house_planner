@@ -1,4 +1,13 @@
 import React from 'react';
+import {
+  BatteryCharging,
+  Check,
+  CircleDot,
+  GraduationCap,
+  Hospital,
+  ShoppingBasket,
+  Utensils,
+} from 'lucide-react';
 
 interface AmenityControlsProps {
   numAmenities: number;
@@ -8,18 +17,26 @@ interface AmenityControlsProps {
   amenityColors: Record<string, string>;
 }
 
-const AmenityControls: React.FC<AmenityControlsProps> = ({ 
-  numAmenities, 
-  setNumAmenities, 
-  selectedAmenities, 
-  toggleAmenity, 
-  amenityColors 
+const amenityIcons = {
+  'EV-Chargers': BatteryCharging,
+  Hospitals: Hospital,
+  Schools: GraduationCap,
+  Restaurants: Utensils,
+  Supermarkets: ShoppingBasket,
+} as const;
+
+const AmenityControls: React.FC<AmenityControlsProps> = ({
+  numAmenities,
+  setNumAmenities,
+  selectedAmenities,
+  toggleAmenity,
+  amenityColors,
 }) => {
   return (
     <div className="space-y-4" data-testid="amenity-controls">
-      <div className="flex flex-col gap-3 rounded-2xl bg-slate-50/80 px-3 py-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/70 bg-white/70 px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 shadow-sm min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between">
         <span>Show</span>
-        <div className="flex items-center justify-between gap-2 sm:justify-end">
+        <div className="flex min-w-0 items-center justify-between gap-2 min-[380px]:justify-end">
           <input
             type="number"
             min="1"
@@ -29,41 +46,54 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
               const nextValue = Math.max(1, parseInt(e.target.value, 10) || 1);
               setNumAmenities(Math.min(20, nextValue));
             }}
-            className="h-10 w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-sm text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            className="h-10 w-16 rounded-xl border border-slate-200 bg-white px-2 py-1 text-center text-sm font-semibold text-slate-900 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
             data-testid="amenity-count-input"
+            aria-label="Number of nearby amenities per selected type"
           />
           <span className="text-[11px] text-slate-500">nearest each</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="amenity-button-grid">
         {Object.entries(amenityColors).map(([type, color]) => {
           const isSelected = selectedAmenities[type];
+          const Icon = amenityIcons[type as keyof typeof amenityIcons] ?? CircleDot;
+
           return (
             <button
               key={type}
               onClick={() => toggleAmenity(type)}
-              className={`flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-medium transition ${
-                isSelected ? 'text-white shadow-md' : 'bg-white text-slate-700 hover:bg-slate-50'
+              className={`group relative flex min-h-14 min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-semibold leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] ${
+                isSelected
+                  ? 'border-transparent bg-slate-950 text-white shadow-lg shadow-slate-900/15'
+                  : 'border-slate-200/80 bg-white/90 text-slate-700 shadow-sm hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md'
               }`}
               style={{
-                backgroundColor: isSelected ? color : undefined,
-                borderColor: color,
+                boxShadow: isSelected ? `0 14px 30px ${color}33` : undefined,
               }}
               data-testid={`amenity-toggle-${type.toLowerCase().replace(/\s+/g, '-')}`}
               aria-pressed={isSelected}
               type="button"
             >
               <div
-                className="flex h-4 w-4 items-center justify-center rounded-md border"
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
+                  isSelected ? 'bg-white/15 ring-1 ring-white/20' : 'bg-slate-50 ring-1 ring-slate-200/80 group-hover:bg-slate-100'
+                }`}
                 style={{
-                  borderColor: isSelected ? 'rgba(255,255,255,0.7)' : color,
-                  backgroundColor: isSelected ? 'white' : 'transparent',
+                  color,
                 }}
               >
-                {isSelected && <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: color }} />}
+                <Icon className={`h-[18px] w-[18px] ${isSelected ? 'text-white' : ''}`} aria-hidden="true" />
               </div>
-              <span className="truncate">{type}</span>
+              <span className="min-w-0 flex-1 break-words">{type}</span>
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
+                  isSelected ? 'border-white/40 bg-white text-slate-950' : 'border-slate-300 bg-white/70'
+                }`}
+                aria-hidden="true"
+              >
+                {isSelected && <Check className="h-3.5 w-3.5" />}
+              </span>
             </button>
           );
         })}

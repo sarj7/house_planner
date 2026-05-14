@@ -4,6 +4,9 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'House Planner',
   description: 'Find nearby amenities for your home',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export const viewport = {

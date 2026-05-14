@@ -120,9 +120,11 @@
 5. Clicking on a marker will show the name and walking distance from the given address.
 6. A highlighted route from the address to the selected amenity will be shown.
 
-## Home Screen
-
-![House Planner Home Page](house_planner.jpg "House Planner Home Page")
+## Recent UI/UX Overhaul
+- **Dedicated Landing Page**: The main route (`/`) now serves a highly polished, responsive landing page targeted at homebuyers and real estate professionals.
+- **Dedicated Map Route**: The core application has been cleanly separated and moved to `/map`.
+- **Abstract Scalable UI**: The landing page features a pure CSS/SVG abstract illustration of the map interface, removing the need to maintain static screenshots as the app iterates.
+- **Custom Vector Branding**: Created a unique, fully scalable inline SVG `<Logo />` that also serves as the site's dynamic favicon (`icon.svg`), replacing generic icons and static raster images.
 
 ## Configuration
 - If using an API key for external services (e.g., Nominatim, Overpass API), ensure it's set up in an `.env` file.
