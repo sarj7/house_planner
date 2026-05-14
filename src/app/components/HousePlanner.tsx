@@ -113,16 +113,32 @@ interface SearchResolution {
 interface AmenitySearchStats {
   type: string;
   requested: number;
+  radius: number;
+  queryTag: string;
+  source?: string;
+  httpStatus?: number;
   raw: number;
   withCoordinates: number;
   withinRadius: number;
   final: number;
+  desiredValidCount?: number;
+  providerRawCount?: number;
+  providerValidCount?: number;
+  providerFailureCount?: number;
+  providerEmptyCount?: number;
+  message?: string;
+  details?: string;
 }
 
 interface AmenitySearchResult {
   amenities: any[];
   stats: AmenitySearchStats;
+  error?: string;
 }
+
+const SHOW_AMENITY_DIAGNOSTICS =
+  process.env.NODE_ENV !== 'production' ||
+  process.env.NEXT_PUBLIC_SHOW_AMENITY_DIAGNOSTICS === 'true';
 
 const formatAddress = (item: any) => {
   if (!item) return '';
@@ -174,9 +190,16 @@ const formatDuration = (minutes: number) => {
   return `${hours}h ${mins.toString().padStart(2, '0')}m`;
 };
 
-const createEmptyAmenityStats = (type: string, requested: number): AmenitySearchStats => ({
+const createEmptyAmenityStats = (
+  type: string,
+  requested: number,
+  radius = 0,
+  queryTag = ''
+): AmenitySearchStats => ({
   type,
   requested,
+  radius,
+  queryTag,
   raw: 0,
   withCoordinates: 0,
   withinRadius: 0,
@@ -189,10 +212,15 @@ const logAmenitySearchStats = (stats: AmenitySearchStats[]) => {
     stats.map((item) => ({
       type: item.type,
       requested: item.requested,
+      radius: item.radius,
+      source: item.source || '',
+      httpStatus: item.httpStatus || '',
       rawApiResults: item.raw,
       afterCoordinateFilter: item.withCoordinates,
       afterRadiusFilter: item.withinRadius,
+      providerValidResults: item.providerValidCount ?? '',
       finalDisplayed: item.final,
+      message: item.message || '',
     }))
   );
 };
@@ -207,6 +235,87 @@ const getDrivingMinutes = (route: any) => {
   if (Number.isFinite(route?.drivingDistance)) return calculateTime(route.drivingDistance / 1000, 'driving');
   if (Number.isFinite(route?.distance)) return calculateTime(route.distance / 1000, 'driving');
   return 0;
+};
+
+const AmenityDiagnostics: React.FC<{ stats: AmenitySearchStats[] }> = ({ stats }) => {
+  if (!SHOW_AMENITY_DIAGNOSTICS || !stats.length) return null;
+
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white/85 px-3 py-3 text-xs text-slate-700 shadow-sm">
+      <summary className="cursor-pointer select-none font-semibold uppercase tracking-[0.16em] text-slate-500">
+        Amenity search diagnostics
+      </summary>
+      <div className="mt-3 space-y-3">
+        {stats.map((item) => {
+          const isPartial = item.final > 0 && item.final < item.requested;
+          const hasError = item.final === 0 && Boolean(item.message);
+          const loaded = item.final > 0;
+
+          return (
+            <div
+              key={`${item.type}-${item.queryTag}`}
+              className="rounded-xl border border-slate-100 bg-slate-50/80 p-3"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-semibold text-slate-900">{item.type}</div>
+                <div
+                  className={clsx(
+                    'rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]',
+                    hasError
+                      ? 'bg-rose-100 text-rose-700'
+                      : isPartial
+                        ? 'bg-amber-100 text-amber-700'
+                        : loaded
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-700'
+                  )}
+                >
+                  {hasError ? 'Error' : isPartial ? 'Partial' : loaded ? 'Loaded' : 'No results'}
+                </div>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] leading-5 text-slate-600">
+                <div>Requested: {item.requested}</div>
+                <div>Displayed: {item.final}</div>
+                <div>Raw API: {item.raw}</div>
+                <div>With coordinates: {item.withCoordinates}</div>
+                <div>Within radius: {item.withinRadius}</div>
+                <div>Radius: {formatRadius(item.radius)}</div>
+                {item.desiredValidCount && <div>Valid target: {item.desiredValidCount}</div>}
+                {item.providerRawCount !== undefined && <div>Provider raw: {item.providerRawCount}</div>}
+                {item.providerValidCount !== undefined && <div>Provider valid: {item.providerValidCount}</div>}
+                {item.providerFailureCount !== undefined && <div>Provider failures: {item.providerFailureCount}</div>}
+                {item.providerEmptyCount !== undefined && <div>Empty providers: {item.providerEmptyCount}</div>}
+              </div>
+
+              <div className="mt-2 space-y-1 text-[11px] leading-5 text-slate-500">
+                <div>Query: {item.queryTag || 'n/a'}</div>
+                <div>Source: {item.source || 'No provider returned usable data'}</div>
+                {item.httpStatus && <div>HTTP status: {item.httpStatus}</div>}
+              </div>
+
+              {item.message && (
+                <div
+                  className={clsx(
+                    'mt-2 rounded-lg px-2 py-2 text-[11px] leading-5',
+                    hasError ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-800'
+                  )}
+                >
+                  {item.message}
+                </div>
+              )}
+
+              {item.details && (
+                <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-900/90 px-2 py-2 text-[10px] leading-4 text-slate-100">
+                  {item.details}
+                </pre>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
 };
 
 const highlightMatch = (text: string, searchTerm: string) => {
@@ -824,7 +933,7 @@ const HousePlanner: React.FC = () => {
       const queryTag = amenityTags[amenityType];
       const searchRadius = clamp(radius, MIN_SEARCH_RADIUS, MAX_SEARCH_RADIUS);
       const requestedCount = clamp(numAmenities, 1, MAX_NUM_AMENITIES);
-      const emptyStats = createEmptyAmenityStats(amenityType, requestedCount);
+      const emptyStats = createEmptyAmenityStats(amenityType, requestedCount, searchRadius, queryTag);
 
       const fetchData = async () => {
         const response = await fetch('/api/amenities', {
@@ -835,18 +944,26 @@ const HousePlanner: React.FC = () => {
             lon,
             radius: searchRadius,
             queryTag,
+            requestedCount,
           }),
         });
 
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
-          const details = typeof payload?.details === 'string' ? ` Details: ${payload.details}` : '';
+          const details = typeof payload?.details === 'string' ? payload.details : '';
           const errorText = `${payload?.error || ''} ${details}`;
           const message = /too many requests|rate limit|429/i.test(errorText)
             ? 'Amenity search is being rate limited. Please wait a moment and try again.'
-            : `Amenity search failed while contacting OpenStreetMap data. HTTP ${response.status}.${details}`;
-          throw new Error(message);
+            : `Amenity search failed while contacting OpenStreetMap data. HTTP ${response.status}.`;
+
+          return {
+            error: message,
+            details,
+            httpStatus: response.status,
+            source: payload?.source,
+            elements: [],
+          };
         }
 
         return payload;
@@ -857,7 +974,29 @@ const HousePlanner: React.FC = () => {
         const elements = Array.isArray(data?.elements) ? data.elements : [];
 
         if (!elements.length) {
-          return { amenities: [], stats: emptyStats };
+          const providerFailureCount = Number(data?.providerFailureCount) || 0;
+          const providerEmptyCount = Number(data?.providerEmptyCount) || 0;
+          const noResultMessage =
+            providerFailureCount > 0
+              ? `${amenityType} could not be confirmed because ${providerFailureCount} map data ${providerFailureCount === 1 ? 'provider failed or timed out' : 'providers failed or timed out'} and ${providerEmptyCount} ${providerEmptyCount === 1 ? 'provider returned' : 'providers returned'} no raw elements within ${formatRadius(searchRadius)}. Try again, or lower the radius if this keeps happening.`
+              : `No ${amenityType.toLowerCase()} amenities were returned by the available map data providers within ${formatRadius(searchRadius)}.`;
+
+          return {
+            amenities: [],
+            stats: {
+              ...emptyStats,
+              source: data?.source,
+              httpStatus: data?.httpStatus,
+              desiredValidCount: data?.desiredValidCount,
+              providerRawCount: data?.providerRawCount,
+              providerValidCount: data?.providerValidCount,
+              providerFailureCount,
+              providerEmptyCount,
+              message: data?.error || noResultMessage,
+              details: data?.details,
+            },
+            error: data?.error,
+          };
         }
 
         const mappedAmenities = elements.map((element: any) => {
@@ -887,24 +1026,48 @@ const HousePlanner: React.FC = () => {
         const finalAmenities = withinRadius
           .sort((a: any, b: any) => a.distance - b.distance)
           .slice(0, requestedCount);
+        const missingCount = Math.max(0, requestedCount - finalAmenities.length);
+        const partialMessage =
+          missingCount > 0 && finalAmenities.length > 0
+            ? `Only ${finalAmenities.length} valid ${amenityType.toLowerCase()} ${finalAmenities.length === 1 ? 'result was' : 'results were'} available within ${formatRadius(searchRadius)} after filtering, so ${missingCount} fewer than requested can be shown.`
+            : undefined;
 
         return {
           amenities: finalAmenities,
           stats: {
             type: amenityType,
             requested: requestedCount,
+            radius: searchRadius,
+            queryTag,
+            source: data?.source,
+            httpStatus: data?.httpStatus,
             raw: elements.length,
             withCoordinates: withCoordinates.length,
             withinRadius: withinRadius.length,
             final: finalAmenities.length,
+            desiredValidCount: data?.desiredValidCount,
+            providerRawCount: data?.providerRawCount,
+            providerValidCount: data?.providerValidCount,
+            providerFailureCount: data?.providerFailureCount,
+            providerEmptyCount: data?.providerEmptyCount,
+            message:
+              partialMessage ||
+              (finalAmenities.length
+                ? undefined
+                : 'Raw elements were returned, but none survived coordinate/radius filtering.'),
+            details: data?.details,
           },
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setAmenitiesError(
-          `Amenity search failed before routes were calculated. ${message || 'The request did not complete.'}`
-        );
-        return { amenities: [], stats: emptyStats };
+        return {
+          amenities: [],
+          stats: {
+            ...emptyStats,
+            message,
+          },
+          error: `${amenityType}: ${message || 'The request did not complete.'}`,
+        };
       }
     },
     [numAmenities, radius]
@@ -940,6 +1103,10 @@ const HousePlanner: React.FC = () => {
       setAmenitySearchStats(stats);
       logAmenitySearchStats(stats);
 
+      const lookupErrors = results
+        .map((result) => result.error)
+        .filter((error): error is string => Boolean(error));
+
       const markers = results.flatMap((result) => {
         return result.amenities.map((amenity: any, index: number) => {
           const id = amenity.sourceId || `${amenity.type}-${amenity.position[0]}-${amenity.position[1]}-${index}`;
@@ -953,6 +1120,18 @@ const HousePlanner: React.FC = () => {
       });
 
       setAmenityMarkers(markers);
+
+      if (lookupErrors.length) {
+        setAmenitiesError(
+          markers.length
+            ? `Some amenity categories could not be loaded. ${lookupErrors.join(' ')}`
+            : `Amenity lookup failed for the selected categories. ${lookupErrors.join(' ')} Try a smaller radius, fewer categories, or wait a moment before retrying.`
+        );
+      }
+
+      if (!markers.length) {
+        return;
+      }
 
       const routeResults: any[] = [];
       searchStage = 'route calculation';
@@ -1257,7 +1436,11 @@ const HousePlanner: React.FC = () => {
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
               {amenitySearchStats
                 .filter((item) => item.final < item.requested)
-                .map((item) => `${item.type}: showing ${item.final} of ${item.requested} requested`)
+                .map((item) =>
+                  item.final > 0
+                    ? `Showing ${item.final} of ${item.requested} ${item.type.toLowerCase()}. Only ${item.withinRadius} were found within ${formatRadius(item.radius)}.`
+                    : `${item.type} results could not be loaded right now. Try again in a moment.`
+                )
                 .join(' • ')}
             </div>
           )}
@@ -1269,6 +1452,8 @@ const HousePlanner: React.FC = () => {
           )}
 
           <AmenitiesList routes={routes} />
+
+          <AmenityDiagnostics stats={amenitySearchStats} />
         </aside>
 
         <button

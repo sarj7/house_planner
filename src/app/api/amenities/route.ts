@@ -5,6 +5,7 @@ export const maxDuration = 30;
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.osm.ch/api/interpreter',
   'https://overpass.openstreetmap.ru/api/interpreter',
 ];
 
@@ -17,9 +18,41 @@ const ALLOWED_TAGS = new Set([
 ]);
 
 const AMENITY_FETCH_TIMEOUT_MS = 12000;
+const MAX_SERVER_ELEMENTS = 1500;
+const MAX_REQUESTED_AMENITIES = 100;
+const MIN_SERVER_OUTPUT_ELEMENTS = 200;
+const SERVER_OUTPUT_BUFFER_MULTIPLIER = 8;
+const OVERPASS_HEADERS = {
+  'Content-Type': 'application/x-www-form-urlencoded',
+  Accept: 'application/json',
+  'User-Agent': 'HousePlanner/1.0 (amenity search; contact: https://github.com/sarj7/house_planner)',
+};
 
 const isFiniteNumber = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isFinite(value);
+};
+
+const calculateDirectDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const earthRadiusMeters = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+};
+
+const countValidElementsWithinRadius = (elements: any[], lat: number, lon: number, radius: number) => {
+  return elements.filter((element) => {
+    const elemLat = Number(element.lat ?? element.center?.lat);
+    const elemLon = Number(element.lon ?? element.center?.lon);
+    if (!Number.isFinite(elemLat) || !Number.isFinite(elemLon)) return false;
+    return calculateDirectDistance(lat, lon, elemLat, elemLon) <= radius;
+  }).length;
 };
 
 const fetchWithTimeout = async (url: string, body: string) => {
@@ -29,7 +62,7 @@ const fetchWithTimeout = async (url: string, body: string) => {
   try {
     return await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: OVERPASS_HEADERS,
       body,
       cache: 'no-store',
       signal: controller.signal,
@@ -45,7 +78,13 @@ const fetchWithTimeout = async (url: string, body: string) => {
 };
 
 export async function POST(request: NextRequest) {
-  let body: { lat?: unknown; lon?: unknown; radius?: unknown; queryTag?: unknown };
+  let body: {
+    lat?: unknown;
+    lon?: unknown;
+    radius?: unknown;
+    queryTag?: unknown;
+    requestedCount?: unknown;
+  };
 
   try {
     body = await request.json();
@@ -57,6 +96,10 @@ export async function POST(request: NextRequest) {
   const lon = Number(body.lon);
   const radius = Number(body.radius);
   const queryTag = typeof body.queryTag === 'string' ? body.queryTag : '';
+  const requestedCount = Math.min(
+    MAX_REQUESTED_AMENITIES,
+    Math.max(1, Math.round(Number(body.requestedCount) || 1))
+  );
 
   if (!isFiniteNumber(lat) || !isFiniteNumber(lon) || !isFiniteNumber(radius)) {
     return NextResponse.json(
@@ -70,6 +113,11 @@ export async function POST(request: NextRequest) {
   }
 
   const safeRadius = Math.min(50000, Math.max(500, Math.round(radius)));
+  const desiredValidCount = Math.min(MAX_SERVER_ELEMENTS, requestedCount);
+  const outputLimit = Math.min(
+    MAX_SERVER_ELEMENTS,
+    Math.max(MIN_SERVER_OUTPUT_ELEMENTS, requestedCount * SERVER_OUTPUT_BUFFER_MULTIPLIER)
+  );
   const query = `
     [out:json][timeout:25];
     (
@@ -77,11 +125,32 @@ export async function POST(request: NextRequest) {
       way[${queryTag}](around:${safeRadius},${lat},${lon});
       relation[${queryTag}](around:${safeRadius},${lat},${lon});
     );
-    out center;
+    out center ${outputLimit};
   `;
 
   const encodedBody = `data=${encodeURIComponent(query)}`;
   const failures: string[] = [];
+  const emptyResponses: string[] = [];
+  let firstEmptyResponse: {
+    elements: any[];
+    source: string;
+    httpStatus: number;
+    radius: number;
+    capped: boolean;
+    outputLimit?: number;
+    providerRawCount: number;
+    providerValidCount: number;
+  } | null = null;
+  let bestPartialResponse: {
+    elements: any[];
+    source: string;
+    httpStatus: number;
+    radius: number;
+    capped: boolean;
+    outputLimit?: number;
+    providerRawCount: number;
+    providerValidCount: number;
+  } | null = null;
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
@@ -94,20 +163,76 @@ export async function POST(request: NextRequest) {
       }
 
       const data = JSON.parse(text);
-      return NextResponse.json({
-        elements: Array.isArray(data?.elements) ? data.elements : [],
+      const elements = Array.isArray(data?.elements) ? data.elements : [];
+      const providerValidCount = countValidElementsWithinRadius(elements, lat, lon, safeRadius);
+      const responsePayload = {
+        elements,
         source: endpoint,
+        httpStatus: response.status,
         radius: safeRadius,
-      });
+        capped: true,
+        outputLimit,
+        providerRawCount: elements.length,
+        providerValidCount,
+      };
+
+      if (!elements.length) {
+        emptyResponses.push(`${endpoint} returned 0 elements`);
+        firstEmptyResponse ??= responsePayload;
+        continue;
+      }
+
+      if (providerValidCount >= desiredValidCount) {
+        return NextResponse.json({
+          ...responsePayload,
+          requestedCount,
+          desiredValidCount,
+          providerFailureCount: failures.length,
+          providerEmptyCount: emptyResponses.length,
+          details: [...emptyResponses, ...failures].join(' | ') || undefined,
+        });
+      }
+
+      bestPartialResponse =
+        !bestPartialResponse || providerValidCount > bestPartialResponse.providerValidCount
+          ? responsePayload
+          : bestPartialResponse;
+
+      failures.push(
+        `${endpoint} returned ${providerValidCount} valid elements within radius, below the requested count ${desiredValidCount}`
+      );
     } catch (error) {
       failures.push(`${endpoint}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  if (bestPartialResponse) {
+    return NextResponse.json({
+      ...bestPartialResponse,
+      requestedCount,
+      desiredValidCount,
+      providerFailureCount: failures.length,
+      providerEmptyCount: emptyResponses.length,
+      details: [...emptyResponses, ...failures].join(' | '),
+    });
+  }
+
+  if (firstEmptyResponse) {
+    return NextResponse.json({
+      ...firstEmptyResponse,
+      requestedCount,
+      desiredValidCount,
+      providerFailureCount: failures.length,
+      providerEmptyCount: emptyResponses.length,
+      details: [...emptyResponses, ...failures].join(' | '),
+    });
   }
 
   return NextResponse.json(
     {
       error: 'Amenity search could not reach the OpenStreetMap Overpass service.',
       details: failures.join(' | '),
+      source: OVERPASS_ENDPOINTS.join(', '),
     },
     { status: 502 }
   );

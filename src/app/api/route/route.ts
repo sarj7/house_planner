@@ -25,6 +25,7 @@ const OSRM_PROFILES: Record<TravelMode, string> = {
 const OSRM_API_BASE_URL = 'https://router.project-osrm.org/route/v1';
 const OPENROUTE_API_KEY =
   process.env.OPENROUTE_API_KEY ?? process.env.NEXT_PUBLIC_OPENROUTE_API_KEY ?? '';
+const ENABLE_OPENROUTE = process.env.ENABLE_OPENROUTE === 'true';
 const ROUTE_FETCH_TIMEOUT_MS = 6500;
 const AVERAGE_WALKING_SPEED_KMH = 5;
 const AVERAGE_DRIVING_SPEED_KMH = 40;
@@ -197,16 +198,18 @@ const getRouteForMode = async (
   mode: TravelMode
 ): Promise<RouteResult> => {
   const failures: string[] = [];
-  try {
-    const openRouteResult = await getOpenRouteRoute(start, end, mode);
-    if (openRouteResult) return openRouteResult;
-    failures.push('OpenRouteService skipped because OPENROUTE_API_KEY is not configured.');
-  } catch (error) {
-    failures.push(error instanceof Error ? error.message : String(error));
-    console.warn(
-      `OpenRoute ${mode} routing failed, falling back to OSRM.`,
-      error instanceof Error ? error.message : error
-    );
+  if (ENABLE_OPENROUTE) {
+    try {
+      const openRouteResult = await getOpenRouteRoute(start, end, mode);
+      if (openRouteResult) return openRouteResult;
+      failures.push('OpenRouteService skipped because OPENROUTE_API_KEY is not configured.');
+    } catch (error) {
+      failures.push(error instanceof Error ? error.message : String(error));
+      console.warn(
+        `OpenRoute ${mode} routing failed, falling back to OSRM.`,
+        error instanceof Error ? error.message : error
+      );
+    }
   }
 
   try {

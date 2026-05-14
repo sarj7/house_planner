@@ -60,18 +60,22 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
         {Object.entries(amenityColors).map(([type, color]) => {
           const isSelected = selectedAmenities[type];
           const Icon = amenityIcons[type as keyof typeof amenityIcons] ?? CircleDot;
+          const selectedShadow = `0 16px 34px ${color}40`;
 
           return (
             <button
               key={type}
               onClick={() => toggleAmenity(type)}
-              className={`group relative flex min-h-14 min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-semibold leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] ${
+              className={`group relative flex min-h-14 min-w-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-semibold leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:scale-[0.99] ${
                 isSelected
-                  ? 'border-transparent bg-slate-950 text-white shadow-lg shadow-slate-900/15'
+                  ? 'text-white shadow-lg'
                   : 'border-slate-200/80 bg-white/90 text-slate-700 shadow-sm hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:shadow-md'
               }`}
               style={{
-                boxShadow: isSelected ? `0 14px 30px ${color}33` : undefined,
+                backgroundColor: isSelected ? color : undefined,
+                borderColor: isSelected ? color : undefined,
+                boxShadow: isSelected ? selectedShadow : undefined,
+                ['--tw-ring-color' as string]: isSelected ? `${color}66` : undefined,
               }}
               data-testid={`amenity-toggle-${type.toLowerCase().replace(/\s+/g, '-')}`}
               aria-pressed={isSelected}
@@ -79,19 +83,22 @@ const AmenityControls: React.FC<AmenityControlsProps> = ({
             >
               <div
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition ${
-                  isSelected ? 'bg-white/15 ring-1 ring-white/20' : 'bg-slate-50 ring-1 ring-slate-200/80 group-hover:bg-slate-100'
+                  isSelected ? 'bg-white/18 ring-1 ring-white/30' : 'bg-slate-50 ring-1 ring-slate-200/80 group-hover:bg-slate-100'
                 }`}
                 style={{
-                  color,
+                  color: isSelected ? '#ffffff' : color,
                 }}
               >
-                <Icon className={`h-[18px] w-[18px] ${isSelected ? 'text-white' : ''}`} aria-hidden="true" />
+                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
               </div>
               <span className="min-w-0 flex-1 break-words">{type}</span>
               <span
                 className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
-                  isSelected ? 'border-white/40 bg-white text-slate-950' : 'border-slate-300 bg-white/70'
+                  isSelected ? 'border-white/60 bg-white text-slate-950' : 'border-slate-300 bg-white/70'
                 }`}
+                style={{
+                  color: isSelected ? color : undefined,
+                }}
                 aria-hidden="true"
               >
                 {isSelected && <Check className="h-3.5 w-3.5" />}
