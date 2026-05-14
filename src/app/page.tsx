@@ -41,14 +41,6 @@ export default function LandingPage() {
         </div>
 
         <div className="max-w-7xl mx-auto relative z-10 flex flex-col items-center text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#141c22]/10 text-xs font-semibold text-[#c6673c] tracking-wide uppercase mb-8 shadow-sm">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#c6673c] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-[#c6673c]"></span>
-            </span>
-            Available Worldwide
-          </div>
-
           <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-[#141c22] leading-[1.05] max-w-5xl">
             Evaluate any location with <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#c6673c] to-[#d6a960]">absolute precision.</span>
           </h1>
