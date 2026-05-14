@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const maxDuration = 30;
+
 type TravelMode = 'walking' | 'driving';
 
 interface RouteResult {
@@ -7,6 +9,7 @@ interface RouteResult {
   distance: number;
   duration: number;
   isEstimate: boolean;
+  failureReason?: string;
 }
 
 const OPENROUTE_URLS: Record<TravelMode, string> = {
@@ -22,6 +25,66 @@ const OSRM_PROFILES: Record<TravelMode, string> = {
 const OSRM_API_BASE_URL = 'https://router.project-osrm.org/route/v1';
 const OPENROUTE_API_KEY =
   process.env.OPENROUTE_API_KEY ?? process.env.NEXT_PUBLIC_OPENROUTE_API_KEY ?? '';
+const ROUTE_FETCH_TIMEOUT_MS = 6500;
+const AVERAGE_WALKING_SPEED_KMH = 5;
+const AVERAGE_DRIVING_SPEED_KMH = 40;
+
+class RouteProviderError extends Error {
+  provider: string;
+  mode: TravelMode;
+  status?: number;
+
+  constructor(provider: string, mode: TravelMode, message: string, status?: number) {
+    super(message);
+    this.name = 'RouteProviderError';
+    this.provider = provider;
+    this.mode = mode;
+    this.status = status;
+  }
+}
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const calculateDirectDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const earthRadiusMeters = 6371e3;
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const estimateRoute = (start: [number, number], end: [number, number], mode: TravelMode): RouteResult => {
+  const distance = calculateDirectDistance(start[0], start[1], end[0], end[1]);
+  const speed = mode === 'walking' ? AVERAGE_WALKING_SPEED_KMH : AVERAGE_DRIVING_SPEED_KMH;
+  return {
+    coordinates: [],
+    distance,
+    duration: (distance / 1000 / speed) * 3600,
+    isEstimate: true,
+  };
+};
 
 const isCoordinatePair = (value: unknown): value is [number, number] => {
   return (
@@ -41,7 +104,7 @@ const getOpenRouteRoute = async (
 ): Promise<RouteResult | null> => {
   if (!OPENROUTE_API_KEY) return null;
 
-  const response = await fetch(OPENROUTE_URLS[mode], {
+  const response = await fetchWithTimeout(OPENROUTE_URLS[mode], {
     method: 'POST',
     headers: {
       Authorization: OPENROUTE_API_KEY,
@@ -55,10 +118,16 @@ const getOpenRouteRoute = async (
       ],
     }),
     cache: 'no-store',
-  });
+  }, ROUTE_FETCH_TIMEOUT_MS);
 
   if (!response.ok) {
-    throw new Error(`OpenRoute ${mode} request failed: ${response.status}`);
+    const details = await response.text().catch(() => '');
+    throw new RouteProviderError(
+      'OpenRouteService',
+      mode,
+      `OpenRouteService ${mode} request failed with HTTP ${response.status}${details ? `: ${details.slice(0, 180)}` : ''}`,
+      response.status
+    );
   }
 
   const data = await response.json();
@@ -67,7 +136,7 @@ const getOpenRouteRoute = async (
   const coordinates = feature?.geometry?.coordinates;
 
   if (!feature || !summary || !Array.isArray(coordinates)) {
-    throw new Error(`OpenRoute ${mode} response was missing route data.`);
+    throw new RouteProviderError('OpenRouteService', mode, `OpenRouteService ${mode} response was missing route data.`);
   }
 
   return {
@@ -90,13 +159,20 @@ const getOsrmRoute = async (
     steps: 'false',
   });
   const profile = OSRM_PROFILES[mode];
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${OSRM_API_BASE_URL}/${profile}/${start[1]},${start[0]};${end[1]},${end[0]}?${params.toString()}`,
-    { cache: 'no-store' }
+    { cache: 'no-store' },
+    ROUTE_FETCH_TIMEOUT_MS
   );
 
   if (!response.ok) {
-    throw new Error(`OSRM ${mode} request failed: ${response.status}`);
+    const details = await response.text().catch(() => '');
+    throw new RouteProviderError(
+      'OSRM',
+      mode,
+      `OSRM ${mode} request failed with HTTP ${response.status}${details ? `: ${details.slice(0, 180)}` : ''}`,
+      response.status
+    );
   }
 
   const data = await response.json();
@@ -104,7 +180,7 @@ const getOsrmRoute = async (
   const coordinates = route?.geometry?.coordinates;
 
   if (!route || !Array.isArray(coordinates)) {
-    throw new Error(`OSRM ${mode} response was missing route data.`);
+    throw new RouteProviderError('OSRM', mode, `OSRM ${mode} response was missing route data.`);
   }
 
   return {
@@ -120,17 +196,30 @@ const getRouteForMode = async (
   end: [number, number],
   mode: TravelMode
 ): Promise<RouteResult> => {
+  const failures: string[] = [];
   try {
     const openRouteResult = await getOpenRouteRoute(start, end, mode);
     if (openRouteResult) return openRouteResult;
+    failures.push('OpenRouteService skipped because OPENROUTE_API_KEY is not configured.');
   } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
     console.warn(
       `OpenRoute ${mode} routing failed, falling back to OSRM.`,
       error instanceof Error ? error.message : error
     );
   }
 
-  return getOsrmRoute(start, end, mode);
+  try {
+    return await getOsrmRoute(start, end, mode);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+    console.warn(`OSRM ${mode} routing failed; using estimated ${mode} route.`, failures.join(' | '));
+    const estimate = estimateRoute(start, end, mode);
+    return {
+      ...estimate,
+      failureReason: failures.join(' | '),
+    } as RouteResult;
+  }
 };
 
 export async function POST(request: NextRequest) {
@@ -160,6 +249,7 @@ export async function POST(request: NextRequest) {
       drivingDuration: drivingRoute.duration,
       isEstimate: walkingRoute.isEstimate,
       drivingIsEstimate: drivingRoute.isEstimate,
+      routingWarning: [walkingRoute.failureReason, drivingRoute.failureReason].filter(Boolean).join(' | ') || undefined,
     });
   } catch (error) {
     return NextResponse.json(

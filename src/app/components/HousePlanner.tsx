@@ -19,7 +19,6 @@ import DynamicMap from './DynamicMap';
 
 const NOMINATIM_API = 'https://nominatim.openstreetmap.org';
 const POSITIONSTACK_API = 'https://api.positionstack.com/v1';
-const OVERPASS_API = 'https://overpass-api.de/api/interpreter';
 const POSITIONSTACK_ACCESS_KEY = process.env.NEXT_PUBLIC_POSITIONSTACK_ACCESS_KEY ?? '';
 
 const MIN_SEARCH_RADIUS = 500;
@@ -828,31 +827,29 @@ const HousePlanner: React.FC = () => {
       const emptyStats = createEmptyAmenityStats(amenityType, requestedCount);
 
       const fetchData = async () => {
-        const query = `
-          [out:json][timeout:25];
-          (
-            node[${queryTag}](around:${searchRadius},${lat},${lon});
-            way[${queryTag}](around:${searchRadius},${lat},${lon});
-            relation[${queryTag}](around:${searchRadius},${lat},${lon});
-          );
-          out center;
-        `;
-
-        const response = await fetch(OVERPASS_API, {
+        const response = await fetch('/api/amenities', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat,
+            lon,
+            radius: searchRadius,
+            queryTag,
+          }),
         });
 
+        const payload = await response.json().catch(() => null);
+
         if (!response.ok) {
-          const errorText = await response.text();
-          const message = errorText.includes('Too Many Requests') || errorText.includes('rate limit')
+          const details = typeof payload?.details === 'string' ? ` Details: ${payload.details}` : '';
+          const errorText = `${payload?.error || ''} ${details}`;
+          const message = /too many requests|rate limit|429/i.test(errorText)
             ? 'Amenity search is being rate limited. Please wait a moment and try again.'
-            : 'Amenity search failed. Please try again.';
+            : `Amenity search failed while contacting OpenStreetMap data. HTTP ${response.status}.${details}`;
           throw new Error(message);
         }
 
-        return response.json();
+        return payload;
       };
 
       try {
@@ -903,7 +900,10 @@ const HousePlanner: React.FC = () => {
           },
         };
       } catch (error) {
-        setAmenitiesError((error as Error).message);
+        const message = error instanceof Error ? error.message : String(error);
+        setAmenitiesError(
+          `Amenity search failed before routes were calculated. ${message || 'The request did not complete.'}`
+        );
         return { amenities: [], stats: emptyStats };
       }
     },
@@ -926,6 +926,8 @@ const HousePlanner: React.FC = () => {
       setIsLoadingAmenities(false);
       return;
     }
+
+    let searchStage = 'amenity lookup';
 
     try {
       const results = await Promise.all(
@@ -953,6 +955,7 @@ const HousePlanner: React.FC = () => {
       setAmenityMarkers(markers);
 
       const routeResults: any[] = [];
+      searchStage = 'route calculation';
       for (let i = 0; i < markers.length; i += 1) {
         const amenity = markers[i];
         const route = await getRoute(selectedLocation, amenity.position);
@@ -970,7 +973,10 @@ const HousePlanner: React.FC = () => {
 
       setRoutes(routeResults);
     } catch (error) {
-      setAmenitiesError((error as Error).message);
+      const message = error instanceof Error ? error.message : String(error);
+      setAmenitiesError(
+        `Amenity search failed. Stage: ${searchStage}. ${message || 'Unknown error.'}`
+      );
     } finally {
       if (token === searchTokenRef.current) {
         setIsLoadingAmenities(false);

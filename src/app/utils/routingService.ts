@@ -57,6 +57,21 @@ export const calculateWalkingMinutesFromDistance = (distanceMeters?: number): nu
   return Math.round(((distanceMeters as number) / 1000 / AVERAGE_WALKING_SPEED_KMH) * 60);
 };
 
+const ROUTE_CLIENT_TIMEOUT_MS = 10000;
+
+const createEstimatedRoute = (start: [number, number], end: [number, number]): AmenityRoute => {
+  const directDistance = calculateDirectDistance(start[0], start[1], end[0], end[1]);
+  return {
+    coordinates: [],
+    distance: directDistance,
+    duration: calculateWalkingMinutesFromDistance(directDistance) * 60,
+    drivingDistance: directDistance,
+    drivingDuration: calculateTime(directDistance / 1000, 'driving') * 60,
+    isEstimate: true,
+    drivingIsEstimate: true,
+  };
+};
+
 // -------------------------
 // Route Fetching Function
 // -------------------------
@@ -66,6 +81,9 @@ export const getRoute = async (
   start: [number, number],
   end: [number, number]
 ): Promise<AmenityRoute> => {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), ROUTE_CLIENT_TIMEOUT_MS);
+
   try {
     const response = await fetch('/api/route', {
       method: 'POST',
@@ -73,11 +91,12 @@ export const getRoute = async (
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ start, end }),
+      signal: controller.signal,
     });
 
-    if (response.ok) {
-      const data = await response.json();
+    const data = await response.json().catch(() => null);
 
+    if (response.ok) {
       if (
         Array.isArray(data?.coordinates) &&
         Number.isFinite(data?.distance) &&
@@ -97,25 +116,16 @@ export const getRoute = async (
       }
     }
 
-    throw new Error('Route calculation failed');
+    const details = typeof data?.details === 'string' ? ` Details: ${data.details}` : '';
+    throw new Error(`Route API failed with HTTP ${response.status}.${details}`);
   } catch (error) {
-    console.error('Error fetching route:', error);
-
-    // Keep estimated metrics, but do not fabricate a straight-line geometry.
-    const directDistance = calculateDirectDistance(
-      start[0], start[1], end[0], end[1]
-    );
-
-    const durationInSeconds = calculateWalkingMinutesFromDistance(directDistance) * 60;
-
-    return {
-      coordinates: [],
-      distance: directDistance,
-      duration: durationInSeconds,
-      drivingDistance: directDistance,
-      drivingDuration: calculateTime(directDistance / 1000, 'driving') * 60,
-      isEstimate: true,
-      drivingIsEstimate: true,
-    };
+    const message =
+      error instanceof Error && error.name === 'AbortError'
+        ? `Route API request timed out after ${Math.round(ROUTE_CLIENT_TIMEOUT_MS / 1000)}s.`
+        : error;
+    console.error('Error fetching route; using direct-distance estimate:', message);
+    return createEstimatedRoute(start, end);
+  } finally {
+    window.clearTimeout(timeout);
   }
 };
