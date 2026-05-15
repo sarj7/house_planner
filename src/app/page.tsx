@@ -197,7 +197,6 @@ export default function LandingPage() {
       <section id="features" className="py-24 bg-white border-y border-[#141c22]/5 relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-[#c6673c] font-semibold tracking-wide uppercase text-sm mb-3">Unmatched Precision</h2>
             <h3 className="font-display text-4xl md:text-5xl font-bold text-[#141c22]">Go beyond the straight line.</h3>
             <p className="mt-4 text-lg text-[#141c22]/70">
               Unlike standard tools that draw direct circles, HousePlanner calculates real pedestrian routes to give you the true measure of a neighborhood&apos;s walkability.
@@ -408,7 +407,6 @@ export default function LandingPage() {
           </div>
           <div className="flex gap-8 text-sm">
             <Link href="/map" className="hover:text-white transition-colors">Map Application</Link>
-            <a href="https://github.com/yourusername/house-planner" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">GitHub Repository</a>
           </div>
           <p className="text-sm">
             © {new Date().getFullYear()} HousePlanner. All rights reserved.
