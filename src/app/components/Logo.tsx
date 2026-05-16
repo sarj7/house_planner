@@ -11,7 +11,9 @@ export function Logo({ className = "w-10 h-10" }: LogoProps) {
       viewBox="0 0 100 100" 
       className={className}
       fill="none"
+      role="img"
     >
+      <title>House Planner Logo</title>
       {/* Base/Grounding: Pin/Walls */}
       <path 
         d="M 25 45 V 55 L 50 90 L 75 55 V 45" 
