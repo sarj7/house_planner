@@ -1,6 +1,18 @@
-'use client';
-
 import dynamic from 'next/dynamic';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Interactive Amenity Map | House Planner',
+  description: 'Use the interactive map to pin locations, select amenities, and calculate real walking routes and time estimates instantly.',
+  alternates: {
+    canonical: '/map',
+  },
+  openGraph: {
+    title: 'Interactive Amenity Map | House Planner',
+    description: 'Pin locations and calculate real walking routes and time estimates instantly.',
+    url: 'https://houseplanner.example.com/map',
+  },
+};
 
 const HousePlanner = dynamic(() => import('@/app/components/HousePlanner'), {
   ssr: false,

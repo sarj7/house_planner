@@ -1,13 +1,31 @@
 import Link from 'next/link';
+import Script from 'next/script';
 import { Navigation, Clock, Search, Building2, Compass, Layers, ShieldCheck, ArrowRight, UserCheck, Briefcase } from 'lucide-react';
 import { Logo } from './components/Logo';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#fff9f2] text-[#141c22] font-sans overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed w-full z-50 top-0 transition-all duration-300 bg-[#fff9f2]/80 backdrop-blur-md border-b border-[#141c22]/5">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <>
+      <Script id="schema-org" type="application/ld+json" dangerouslySetInnerHTML={{
+        __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "House Planner",
+          "url": "https://houseplanner.example.com",
+          "description": "Evaluate real estate and neighborhoods with absolute precision. Get real walking routes and accurate time estimates instantly.",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "All",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        })
+      }} />
+      <div className="min-h-screen bg-[#fff9f2] text-[#141c22] font-sans overflow-x-hidden">
+        {/* Navigation */}
+        <header className="fixed w-full z-50 top-0 transition-all duration-300 bg-[#fff9f2]/80 backdrop-blur-md border-b border-[#141c22]/5">
+          <nav aria-label="Main navigation" className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo className="w-9 h-9" />
             <span className="font-display font-semibold text-xl tracking-tight text-[#141c22]">
@@ -30,18 +48,19 @@ export default function LandingPage() {
               Get Started
             </Link>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6">
+      <main>
+        {/* Hero Section */}
+        <section aria-labelledby="hero-heading" className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-6">
         <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-[10%] -right-[10%] w-[50%] h-[50%] rounded-full bg-[#20776f]/10 blur-[120px]" />
           <div className="absolute top-[20%] -left-[10%] w-[40%] h-[40%] rounded-full bg-[#c6673c]/10 blur-[120px]" />
         </div>
 
         <div className="max-w-7xl mx-auto relative z-10 flex flex-col items-center text-center">
-          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-[#141c22] leading-[1.05] max-w-5xl">
+          <h1 id="hero-heading" className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight text-[#141c22] leading-[1.05] max-w-5xl">
             Evaluate any location with <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#c6673c] to-[#d6a960]">absolute precision.</span>
           </h1>
 
@@ -194,10 +213,10 @@ export default function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-24 bg-white border-y border-[#141c22]/5 relative">
+      <section aria-labelledby="features-heading" id="features" className="py-24 bg-white border-y border-[#141c22]/5 relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h3 className="font-display text-4xl md:text-5xl font-bold text-[#141c22]">Go beyond the straight line.</h3>
+            <h2 id="features-heading" className="font-display text-4xl md:text-5xl font-bold text-[#141c22]">Go beyond the straight line.</h2>
             <p className="mt-4 text-lg text-[#141c22]/70">
               Unlike standard tools that draw direct circles, HousePlanner calculates real pedestrian routes to give you the true measure of a neighborhood&apos;s walkability.
             </p>
@@ -231,7 +250,7 @@ export default function LandingPage() {
                 <div className={`w-14 h-14 rounded-2xl ${feature.bg} flex items-center justify-center mb-6`}>
                   <feature.icon className={`w-7 h-7 ${feature.color}`} />
                 </div>
-                <h4 className="text-xl font-bold text-[#141c22] mb-3">{feature.title}</h4>
+                <h3 className="text-xl font-bold text-[#141c22] mb-3">{feature.title}</h3>
                 <p className="text-[#141c22]/70 leading-relaxed">
                   {feature.description}
                 </p>
@@ -242,7 +261,7 @@ export default function LandingPage() {
       </section>
 
       {/* How it Works / Workflow */}
-      <section id="how-it-works" className="py-24 bg-[#141c22] text-white relative overflow-hidden">
+      <section aria-labelledby="workflow-heading" id="how-it-works" className="py-24 bg-[#141c22] text-white relative overflow-hidden">
         <div className="absolute inset-0 z-0">
           <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-[#20776f]/20 to-transparent" />
         </div>
@@ -250,8 +269,8 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 relative z-10">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
-              <h2 className="text-[#d6a960] font-semibold tracking-wide uppercase text-sm mb-3">Workflow</h2>
-              <h3 className="font-display text-4xl md:text-5xl font-bold mb-6">Effortless location analysis in three steps.</h3>
+              <span className="block text-[#d6a960] font-semibold tracking-wide uppercase text-sm mb-3">Workflow</span>
+              <h2 id="workflow-heading" className="font-display text-4xl md:text-5xl font-bold mb-6">Effortless location analysis in three steps.</h2>
 
               <div className="mt-12 space-y-8">
                 {[
@@ -278,7 +297,7 @@ export default function LandingPage() {
                       </div>
                     </div>
                     <div>
-                      <h4 className="text-xl font-bold mb-2">{item.title}</h4>
+                      <h3 className="text-xl font-bold mb-2">{item.title}</h3>
                       <p className="text-white/60 leading-relaxed">{item.description}</p>
                     </div>
                   </div>
@@ -331,10 +350,10 @@ export default function LandingPage() {
       </section>
 
       {/* Use Cases Section */}
-      <section id="use-cases" className="py-24 bg-[#fff9f2] relative">
+      <section aria-labelledby="use-cases-heading" id="use-cases" className="py-24 bg-[#fff9f2] relative">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h3 className="font-display text-4xl md:text-5xl font-bold text-[#141c22]">Built for professionals and individuals.</h3>
+            <h2 id="use-cases-heading" className="font-display text-4xl md:text-5xl font-bold text-[#141c22]">Built for professionals and individuals.</h2>
           </div>
 
           <div className="grid md:grid-cols-2 gap-8">
@@ -342,7 +361,7 @@ export default function LandingPage() {
               <div className="w-14 h-14 rounded-full bg-[#20776f]/10 flex items-center justify-center mb-6">
                 <UserCheck className="w-7 h-7 text-[#20776f]" />
               </div>
-              <h4 className="text-2xl font-bold text-[#141c22] mb-4">For Homebuyers & Movers</h4>
+              <h3 className="text-2xl font-bold text-[#141c22] mb-4">For Homebuyers & Movers</h3>
               <p className="text-[#141c22]/70 mb-8 leading-relaxed">
                 Don&apos;t just look at photos. Ensure your future home is truly walkable to the amenities that matter to your daily life—like your preferred grocery store or the nearest park.
               </p>
@@ -360,7 +379,7 @@ export default function LandingPage() {
               <div className="w-14 h-14 rounded-full bg-[#c6673c]/20 flex items-center justify-center mb-6">
                 <Briefcase className="w-7 h-7 text-[#c6673c]" />
               </div>
-              <h4 className="text-2xl font-bold mb-4">For Real Estate Professionals</h4>
+              <h3 className="text-2xl font-bold mb-4">For Real Estate Professionals</h3>
               <p className="text-white/70 mb-8 leading-relaxed">
                 Provide unmatched value to your clients. Instantly generate factual, visual data about a property&apos;s location to close deals faster and build immediate trust.
               </p>
@@ -378,13 +397,13 @@ export default function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 relative overflow-hidden border-t border-[#141c22]/5">
+      <section aria-labelledby="cta-heading" className="py-24 relative overflow-hidden border-t border-[#141c22]/5">
         <div className="absolute inset-0 bg-gradient-to-b from-[#fff9f2] to-[#f6efe4] z-0" />
         <div className="max-w-4xl mx-auto px-6 relative z-10 text-center">
           <div className="w-20 h-20 mx-auto bg-white rounded-2xl shadow-xl flex items-center justify-center mb-8 rotate-3">
             <Building2 className="w-10 h-10 text-[#c6673c]" />
           </div>
-          <h2 className="font-display text-4xl md:text-6xl font-bold text-[#141c22] mb-6">Ready to map your neighborhood?</h2>
+          <h2 id="cta-heading" className="font-display text-4xl md:text-6xl font-bold text-[#141c22] mb-6">Ready to map your neighborhood?</h2>
           <p className="text-xl text-[#141c22]/70 mb-10">
             Start using HousePlanner for free. No account required.
           </p>
@@ -413,6 +432,8 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+      </main>
     </div>
+    </>
   );
 }

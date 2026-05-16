@@ -1,0 +1,16 @@
+# House Planner
+
+> House Planner is an advanced real estate and neighborhood analysis application that calculates real walking routes and precise time estimates to nearby amenities.
+
+## Bottom Line Up Front (BLUF)
+House Planner provides homebuyers, renters, and real estate professionals with factual, street-validated walking distances and times to essential amenities (schools, hospitals, transit, supermarkets). Unlike standard tools that use "as-the-crow-flies" radius circles, House Planner maps actual pedestrian walkways and street paths for 100% accurate neighborhood walkability assessment.
+
+## Key Features
+- **Real Walking Routes**: Calculates true pedestrian paths instead of direct-line distances.
+- **Accurate Time Estimates**: Provides reliable walking or driving times to specific points of interest.
+- **Comprehensive Amenity Filtering**: Instantly maps hospitals, schools, restaurants, transit stations, and EV chargers.
+- **Interactive Global Map**: Works for any address worldwide by dropping a pin.
+
+## Use Cases
+- **Homebuyers**: Verify walkability to schools, parks, and daily necessities before purchasing a property.
+- **Real Estate Agents**: Generate visual proof of a property's convenience to close deals and build trust with clients.
